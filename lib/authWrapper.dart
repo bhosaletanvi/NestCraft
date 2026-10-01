@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:nest_craft/LoginPage.dart';
 
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
@@ -28,11 +29,7 @@ class AuthWrapper extends StatelessWidget {
         }
 
         print("going to login page");
-        return const Scaffold(
-          body: Center(
-            child: Text('Login Page'),
-          ),
-        );
+        return LoginPage();
       },
     );
   }
