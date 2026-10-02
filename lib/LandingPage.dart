@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:nest_craft/authWrapper.dart';
 
 class LandingPage extends StatefulWidget {
   const LandingPage({super.key});
@@ -14,11 +15,17 @@ class _LandingPageState extends State<LandingPage> {
   // INTERIOR IMAGES
   // ------------------------------------------------------------
 
-  final List<String> interiorImages = [
-  'assets/images/hall.jpg',
-  'assets/images/kitchen.jpg',
-  'assets/images/gallery.jpg',
-  'assets/images/bedroom.jpg',
+//   final List<String> interiorImages = [
+//   'https://i.pinimg.com/736x/2d/f6/a5/2df6a5339ca3e487ec035f1513c6f817.jpg',
+//   'https://i.pinimg.com/736x/50/fc/71/50fc714107136bfe9b5a147aadba706f.jpg',
+//   'https://i.pinimg.com/736x/0b/cd/e0/0bcde06c841d9d37b054ec3fc50af2ea.jpg',
+//   'https://i.pinimg.com/736x/ed/37/bf/ed37bf966a2406665c35fe339b9d17a4.jpg',
+// ];
+final List<String> interiorImages = [
+  'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c',
+  'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea',
+  'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0',
+  'https://images.unsplash.com/photo-1600585154340-be6161a56a0c',
 ];
 
   int currentImageIndex = 0;
@@ -63,13 +70,21 @@ class _LandingPageState extends State<LandingPage> {
           // FULL SCREEN BACKGROUND IMAGE
           // ======================================================
 
-          Positioned.fill(
-            child: Image.asset(
-              interiorImages[currentImageIndex],
-              key: ValueKey(currentImageIndex),
-              fit: BoxFit.cover,
-            ),
-          ),
+        Positioned.fill(
+  child: Image.network(
+    interiorImages[currentImageIndex],
+    key: ValueKey(currentImageIndex),
+    fit: BoxFit.cover,
+    errorBuilder: (context, error, stackTrace) {
+      return const Center(
+        child: Text(
+          'Image could not be loaded',
+          style: TextStyle(color: Colors.white),
+        ),
+      );
+    },
+  ),
+),
 
           // ======================================================
           // DARK OVERLAY
@@ -248,11 +263,7 @@ class _LandingPageState extends State<LandingPage> {
                           width: 38,
                           height: 38,
 
-                          // decoration: BoxDecoration(
-                          //   color: Colors.white.withOpacity(0.20),
-                          //   borderRadius:
-                          //       BorderRadius.circular(12),
-                          // ),
+                         
 
                           child: const Icon(
                             Icons.auto_awesome_rounded,
@@ -354,14 +365,11 @@ class _LandingPageState extends State<LandingPage> {
 
                       child: ElevatedButton(
                         onPressed: () {
-                          // TODO:
-                          // Navigate to next page here.
+                          Navigator.push(context, MaterialPageRoute(builder: (_)=>AuthWrapper()));
                         },
 
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor:
-                              const Color(0xFF292720),
+                          backgroundColor: Color(0xFF514E25),
 
                           elevation: 0,
 
@@ -382,6 +390,7 @@ class _LandingPageState extends State<LandingPage> {
                               'START DESIGNING',
                               style: TextStyle(
                                 fontSize: 11,
+                                color: Colors.white,
                                 fontWeight:
                                     FontWeight.w700,
                                 letterSpacing: 1.3,
@@ -392,6 +401,7 @@ class _LandingPageState extends State<LandingPage> {
 
                             Icon(
                               Icons.arrow_forward_rounded,
+                              color: Colors.white,
                               size: 17,
                             ),
                           ],
