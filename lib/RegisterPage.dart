@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -128,7 +129,15 @@ class _RegisterPageState extends State<RegisterPage> {
       await Future.delayed(
         const Duration(milliseconds: 800),
       );
+      print("added to authentication");
 
+        await FirebaseFirestore.instance.collection("users").add({
+          "username": nameController.text.trim(),
+          "email": emailController.text.trim(),
+          "user_id": FirebaseAuth.instance.currentUser!.uid,
+        });
+
+        print("added to firestore");
       if (!mounted) return;
 
       Navigator.pop(context);
