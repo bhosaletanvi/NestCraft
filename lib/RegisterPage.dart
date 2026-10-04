@@ -344,6 +344,10 @@ Widget _mobileNavbar(Color brown) {
           ],
         ),
       ),
+    );
+  }
+
+  // ----------- MOBILE NAVBAR 
 
       // DROPDOWN NAVIGATION
       if (_showMobileNav)
