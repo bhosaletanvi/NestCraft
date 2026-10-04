@@ -20,13 +20,30 @@ class AuthWrapper extends StatelessWidget {
         }
 
         if (snapshot.hasData) {
-          print("going to homepage");
-          return const Scaffold(
-            body: Center(
-              child: Text('Home Page'),
-            ),
-          );
-        }
+  print("going to homepage");
+
+  return Scaffold(
+    appBar: AppBar(
+      title: const Text('Home Page'),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.logout),
+          tooltip: 'Logout',
+          onPressed: () async {
+            await FirebaseAuth.instance.signOut();
+          },
+        ),
+      ],
+    ),
+
+    body: const Center(
+      child: Text(
+        'Home Page',
+        style: TextStyle(fontSize: 24),
+      ),
+    ),
+  );
+}
 
         print("going to login page");
         return LoginPage();

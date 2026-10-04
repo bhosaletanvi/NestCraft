@@ -1,5 +1,5 @@
 import 'dart:async';
-
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -32,6 +32,7 @@ class _RegisterPageState extends State<RegisterPage> {
   bool obscurePassword = true;
   bool obscureConfirmPassword = true;
   bool isLoading = false;
+  bool _showMobileNav = false;
 
   int currentImage = 0;
   Timer? imageTimer;
@@ -128,7 +129,15 @@ class _RegisterPageState extends State<RegisterPage> {
       await Future.delayed(
         const Duration(milliseconds: 800),
       );
+      print("added to authentication");
 
+        await FirebaseFirestore.instance.collection("users").add({
+          "username": nameController.text.trim(),
+          "email": emailController.text.trim(),
+          "user_id": FirebaseAuth.instance.currentUser!.uid,
+        });
+
+        print("added to firestore");
       if (!mounted) return;
 
       Navigator.pop(context);
@@ -197,7 +206,7 @@ class _RegisterPageState extends State<RegisterPage> {
       width: width,
       height: height,
       child: Image.asset(
-        'assets/nestcraft.png',
+        'assets/images/nestcraft.png',
         fit: BoxFit.contain,
         errorBuilder: (context, error, stackTrace) {
           return const Icon(
@@ -217,122 +226,220 @@ class _RegisterPageState extends State<RegisterPage> {
       height: 78,
       color: cream,
       padding: const EdgeInsets.symmetric(horizontal: 35),
-      child: Row(
-        children: [
-          _logo(
-            width: 200,
-            height: 70,
+      child:  Row(
+  children: [
+
+    // =========================
+    // LOGO - LEFT
+    // =========================
+    _logo(
+      width: 200,
+      height: 70,
+    ),
+
+    const Spacer(),
+
+    // =========================
+    // NAVBAR - RIGHT
+    // =========================
+    Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        
+        _navText(
+          "Home",
+          const Color(0xFF2F2922),
+        ),
+        
+        const SizedBox(width: 35),
+        
+        _navText(
+          "How It Works",
+          const Color(0xFF2F2922),
+        ),
+        
+        const SizedBox(width: 35),
+        
+        _navText(
+          "About",
+          const Color(0xFF2F2922),
+        ),
+        
+        const SizedBox(width: 35),
+        
+        // GET STARTED
+        Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 23,
+            vertical: 12,
           ),
+          decoration: BoxDecoration(
+            color: brown,
+            borderRadius: BorderRadius.circular(30),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                "Get Started",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+        
+              SizedBox(width: 8),
+        
+              Icon(
+                Icons.arrow_forward_rounded,
+                color: Colors.white,
+                size: 16,
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
 
-          const Spacer(),
+    const SizedBox(width: 25),
+  ],
+),
+    );
+  }
 
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            child: const Text(
-              'Home',
-              style: TextStyle(
-                color: olive,
-                fontSize: 15,
+  // ================= MOBILE NAVBAR =================
+Widget _mobileNavbar(Color brown) {
+  return Column(
+    children: [
+      // TOP BAR
+      Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 7,
+          vertical: 7,
+        ),
+        child: Row(
+          children: [
+            _logo(
+              width: 160,
+              height: 65,
+            ),
+
+            const Spacer(),
+
+            IconButton(
+              onPressed: () {
+                setState(() {
+                  _showMobileNav = !_showMobileNav;
+                });
+              },
+              icon: Icon(
+                _showMobileNav
+                    ? Icons.close_rounded
+                    : Icons.more_vert_rounded,
+                size: 27,
+                color: const Color(0xFF2F2922),
               ),
             ),
-          ),
-
-          const SizedBox(width: 25),
-
-          TextButton(
-            onPressed: () {},
-            child: const Text(
-              'How It Works',
-              style: TextStyle(
-                color: olive,
-                fontSize: 15,
-              ),
-            ),
-          ),
-
-          const SizedBox(width: 25),
-
-          TextButton(
-            onPressed: () {},
-            child: const Text(
-              'About',
-              style: TextStyle(
-                color: olive,
-                fontSize: 15,
-              ),
-            ),
-          ),
-
-          const SizedBox(width: 25),
-
-          TextButton(
-            onPressed: () {},
-            child: const Text(
-              'Get Started',
-              style: TextStyle(
-                color: olive,
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   // ----------- MOBILE NAVBAR 
 
-  Widget _mobileNavbar() {
-    return Container(
-      height: 72,
-      color: cream,
-      padding: const EdgeInsets.symmetric(horizontal: 18),
-      child: Row(
-        children: [
-          _logo(
-            width: 145,
-            height: 60,
+      // DROPDOWN NAVIGATION
+      if (_showMobileNav)
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.fromLTRB(
+            15,
+            0,
+            15,
+            12,
           ),
-
-          const Spacer(),
-
-          PopupMenuButton<String>(
-            icon: const Icon(
-              Icons.menu,
-              color: olive,
-              size: 28,
-            ),
-            onSelected: (value) {
-              if (value == 'home') {
-                Navigator.pop(context);
-              }
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: 'home',
-                child: Text('Home'),
-              ),
-              PopupMenuItem(
-                value: 'how',
-                child: Text('How It Works'),
-              ),
-              PopupMenuItem(
-                value: 'about',
-                child: Text('About'),
-              ),
-              PopupMenuItem(
-                value: 'get',
-                child: Text('Get Started'),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 12,
+          ),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8F5EF),
+            borderRadius: BorderRadius.circular(15),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 15,
+                offset: const Offset(0, 5),
               ),
             ],
           ),
-        ],
+          child: Column(
+            children: [
+              _mobileNavItem("Home"),
+              _mobileNavItem("Features"),
+              _mobileNavItem("How It Works"),
+              _mobileNavItem("About"),
+
+              const SizedBox(height: 8),
+
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _showMobileNav = false;
+                    });
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: brown,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 13,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(25),
+                    ),
+                  ),
+                  child: const Text(
+                    "Get Started",
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+    ],
+  );
+}
+Widget _mobileNavItem(String title) {
+  return InkWell(
+    onTap: () {
+      setState(() {
+        _showMobileNav = false;
+      });
+    },
+    child: Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        vertical: 13,
       ),
-    );
-  }
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 14,
+          color: Color(0xFF2F2922),
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    ),
+  );
+}
 
   // ================= ROOM IMAGE =================
 
@@ -857,7 +964,7 @@ class _RegisterPageState extends State<RegisterPage> {
               child: SingleChildScrollView(
                 child: Column(
                   children: [
-                    _mobileNavbar(),
+                    _mobileNavbar(brown),
                     _mobileImage(),
                     _mobileForm(),
                   ],
@@ -892,6 +999,20 @@ class _RegisterPageState extends State<RegisterPage> {
             ),
           );
         },
+      ),
+    );
+  }
+  
+  Widget _navText(
+    String text,
+    Color color,
+  ) {
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 18,
+        color: color,
+        fontWeight: FontWeight.w500,
       ),
     );
   }
