@@ -26,6 +26,10 @@ class _RegisterPageState extends State<RegisterPage> {
   final TextEditingController passwordController = TextEditingController();
   final TextEditingController confirmPasswordController =
       TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+
+final GlobalKey _howItWorksKey = GlobalKey();
+final GlobalKey _aboutKey = GlobalKey();    
 
   // ================= VARIABLES =================
 
@@ -69,7 +73,7 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   void dispose() {
     imageTimer?.cancel();
-
+    _scrollController.dispose();
     nameController.dispose();
     emailController.dispose();
     passwordController.dispose();
@@ -77,7 +81,19 @@ class _RegisterPageState extends State<RegisterPage> {
 
     super.dispose();
   }
+  //scroll function
+  void _scrollToSection(GlobalKey key) {
+  final context = key.currentContext;
 
+  if (context != null) {
+    Scrollable.ensureVisible(
+      context,
+      duration: const Duration(milliseconds: 800),
+      curve: Curves.easeInOut,
+      alignment: 0.05,
+    );
+  }
+}
   // ================= REGISTER =================
 
   Future<void> registerUser() async {
@@ -419,6 +435,22 @@ Widget _mobileNavItem(String title) {
       setState(() {
         _showMobileNav = false;
       });
+
+      if (title == "How It Works") {
+        _scrollToSection(_howItWorksKey);
+      }
+
+      if (title == "About") {
+        _scrollToSection(_aboutKey);
+      }
+
+      if (title == "Home") {
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 800),
+          curve: Curves.easeInOut,
+        );
+      }
     },
     child: Container(
       width: double.infinity,
@@ -943,40 +975,62 @@ Widget _mobileNavItem(String title) {
   }
 
   // ================= BUILD =================
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    backgroundColor: cream,
+    body: LayoutBuilder(
+      builder: (context, constraints) {
+        final bool isMobile = constraints.maxWidth < 800;
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: cream,
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final bool isMobile =
-              constraints.maxWidth < 800;
+        // ================= MOBILE =================
 
-          // ================= MOBILE =================
-
-          if (isMobile) {
-            return SafeArea(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    _mobileNavbar(brown),
-                    _mobileImage(),
-                    _mobileForm(),
-                  ],
-                ),
-              ),
-            );
-          }
-
-          // ================= DESKTOP =================
-
+        if (isMobile) {
           return SafeArea(
+            child: SingleChildScrollView(
+                controller: _scrollController,
+
+              child: Column(
+                children: [
+                  // 1. NAVBAR
+                  _mobileNavbar(brown),
+
+                  // 2. IMAGE
+                  _mobileImage(),
+
+                  // 3. REGISTER FORM
+                  _mobileForm(),
+
+                  // 4. HOW IT WORKS
+                  Container(
+  key: _howItWorksKey,
+  child: _howItWorksSection(),
+),
+
+                  // 5. ABOUT
+                  Container(
+                    key: _aboutKey,
+                    child: _aboutSection(),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        // ================= DESKTOP =================
+
+        return SafeArea(
+          child: SingleChildScrollView(
+            controller: _scrollController,
             child: Column(
               children: [
+                // 1. NAVBAR
                 _navbar(),
 
-                Expanded(
+                // 2. IMAGE + FORM
+                SizedBox(
+                  height: constraints.maxHeight - 78,
                   child: Row(
                     children: [
                       Expanded(
@@ -991,25 +1045,511 @@ Widget _mobileNavItem(String title) {
                     ],
                   ),
                 ),
+
+                // 3. HOW IT WORKS
+                Container(
+                  key: _howItWorksKey,
+                  child: _howItWorksSection(),
+                ),
+
+                // 4. ABOUT
+                   Container(
+      key: _aboutKey,
+      child: _aboutSection(),
+    ),
               ],
             ),
-          );
-        },
+          ),
+        );
+      },
+    ),
+  );
+}
+// ================= HOW IT WORKS =================
+
+Widget _howItWorksSection() {
+  final steps = [
+    {
+      "number": "01",
+      "icon": Icons.add_photo_alternate_outlined,
+      "title": "Upload Your Space",
+      "description":
+          "Start by uploading a photo of your room. It can be your living room, bedroom, kitchen, or any space you want to redesign.",
+    },
+    {
+      "number": "02",
+      "icon": Icons.auto_awesome_outlined,
+      "title": "Get Design Ideas",
+      "description":
+          "NestCraft analyzes your room and provides creative interior ideas that match the space and your preferences.",
+    },
+    {
+      "number": "03",
+      "icon": Icons.tune_outlined,
+      "title": "Personalize Everything",
+      "description":
+          "Change furniture, colors and decorations. Move objects around and experiment until the room feels right.",
+    },
+    {
+      "number": "04",
+      "icon": Icons.shopping_bag_outlined,
+      "title": "Explore Alternatives",
+      "description":
+          "Discover alternative furniture and decor options with prices so you can find choices that fit your style and budget.",
+    },
+    {
+      "number": "05",
+      "icon": Icons.home_outlined,
+      "title": "Transform Your Space",
+      "description":
+          "Save your final design and turn your vision into a beautiful, personalized space you'll love.",
+    },
+  ];
+
+  return Container(
+    width: double.infinity,
+    color: const Color(0xFFF8F5EF),
+    padding: const EdgeInsets.symmetric(
+      horizontal: 30,
+      vertical: 85,
+    ),
+    child: Column(
+      children: [
+        // SMALL TITLE
+        const Text(
+          "HOW IT WORKS",
+          style: TextStyle(
+            color: olive,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 3,
+          ),
+        ),
+
+        const SizedBox(height: 14),
+
+        // MAIN TITLE
+        const Text(
+          "From Empty Space\nTo Your Dream Space",
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: olive,
+            fontSize: 38,
+            fontWeight: FontWeight.w700,
+            height: 1.15,
+          ),
+        ),
+
+        const SizedBox(height: 18),
+
+        // DESCRIPTION
+        ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: 650,
+          ),
+          child: const Text(
+            "A simple design journey that helps you imagine, "
+            "customize and create a space that feels uniquely yours.",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: olive,
+              fontSize: 15,
+              height: 1.6,
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 60),
+
+        // STEPS
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final bool smallScreen = constraints.maxWidth < 850;
+
+            if (smallScreen) {
+              return Column(
+                children: [
+                  for (int i = 0; i < steps.length; i++)
+                    _howItWorksVerticalStep(
+                      number: steps[i]["number"] as String,
+                      icon: steps[i]["icon"] as IconData,
+                      title: steps[i]["title"] as String,
+                      description:
+                          steps[i]["description"] as String,
+                      isLast: i == steps.length - 1,
+                    ),
+                ],
+              );
+            }
+
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (int i = 0; i < steps.length; i++)
+                  Expanded(
+                    child: _howItWorksDesktopStep(
+                      number: steps[i]["number"] as String,
+                      icon: steps[i]["icon"] as IconData,
+                      title: steps[i]["title"] as String,
+                      description:
+                          steps[i]["description"] as String,
+                      isLast: i == steps.length - 1,
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+
+
+       
+      ],
+    ),
+  );
+}
+Widget _howItWorksDesktopStep({
+  required String number,
+  required IconData icon,
+  required String title,
+  required String description,
+  required bool isLast,
+}) {
+  return Column(
+    children: [
+      // NUMBER + CONNECTING LINE
+      Row(
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: olive,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: olive.withOpacity(0.18),
+                  blurRadius: 15,
+                  offset: const Offset(0, 7),
+                ),
+              ],
+            ),
+            child: Icon(
+              icon,
+              color: Colors.white,
+              size: 27,
+            ),
+          ),
+
+          if (!isLast)
+            Expanded(
+              child: Container(
+                height: 1,
+                margin: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                ),
+                color: olive.withOpacity(0.25),
+              ),
+            ),
+        ],
       ),
-    );
-  }
-  
+
+      const SizedBox(height: 20),
+
+      // NUMBER
+      Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          number,
+          style: TextStyle(
+            color: brown.withOpacity(0.6),
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1,
+          ),
+        ),
+      ),
+
+      const SizedBox(height: 7),
+
+      // TITLE
+      Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          title,
+          style: const TextStyle(
+            color: olive,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            height: 1.2,
+          ),
+        ),
+      ),
+
+      const SizedBox(height: 10),
+
+      // DESCRIPTION
+      Align(
+        alignment: Alignment.centerLeft,
+        child: Padding(
+          padding: const EdgeInsets.only(right: 20),
+          child: Text(
+            description,
+            style: const TextStyle(
+              color: olive,
+              fontSize: 12.5,
+              height: 1.55,
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
+}
+Widget _howItWorksVerticalStep({
+  required String number,
+  required IconData icon,
+  required String title,
+  required String description,
+  required bool isLast,
+}) {
+  return Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      // LEFT TIMELINE
+      Column(
+        children: [
+          Container(
+            width: 58,
+            height: 58,
+            decoration: BoxDecoration(
+              color: olive,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: olive.withOpacity(0.18),
+                  blurRadius: 12,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: Icon(
+              icon,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+
+          if (!isLast)
+            Container(
+              width: 1,
+              height: 75,
+              color: olive.withOpacity(0.25),
+            ),
+        ],
+      ),
+
+      const SizedBox(width: 18),
+
+      // CONTENT
+      Expanded(
+        child: Padding(
+          padding: const EdgeInsets.only(
+            bottom: 30,
+          ),
+          child: Column(
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
+            children: [
+              Text(
+                number,
+                style: TextStyle(
+                  color: brown.withOpacity(0.65),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1,
+                ),
+              ),
+
+              const SizedBox(height: 5),
+
+              Text(
+                title,
+                style: const TextStyle(
+                  color: olive,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+
+              const SizedBox(height: 7),
+
+              Text(
+                description,
+                style: const TextStyle(
+                  color: olive,
+                  fontSize: 13,
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ],
+  );
+}
+Widget _aboutSection() {
+  return Container(
+    width: double.infinity,
+    padding: const EdgeInsets.symmetric(
+      horizontal: 40,
+      vertical: 70,
+    ),
+    color: cream,
+    child: Column(
+      children: [
+        const Text(
+          "ABOUT NESTCRAFT",
+          style: TextStyle(
+            color: olive,
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 2,
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        const Text(
+          "Imagine. Change. Live.",
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: olive,
+            fontSize: 32,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+
+        const SizedBox(height: 18),
+
+        ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: 800,
+          ),
+          child: const Text(
+            "NestCraft is an interior design platform that helps you "
+            "reimagine your living space. Upload your room, explore "
+            "creative design ideas, customize furniture and decor, "
+            "and discover alternatives that match your style and budget.",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: olive,
+              fontSize: 15,
+              height: 1.7,
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 35),
+
+        Wrap(
+          spacing: 25,
+          runSpacing: 20,
+          alignment: WrapAlignment.center,
+          children: [
+            _aboutItem(
+              Icons.design_services_outlined,
+              "Personalized Design",
+            ),
+            _aboutItem(
+              Icons.auto_awesome_outlined,
+              "Smart Suggestions",
+            ),
+            _aboutItem(
+              Icons.account_balance_wallet_outlined,
+              "Budget Friendly",
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+Widget _aboutItem(
+  IconData icon,
+  String title,
+) {
+  return Container(
+    padding: const EdgeInsets.symmetric(
+      horizontal: 22,
+      vertical: 15,
+    ),
+    decoration: BoxDecoration(
+      border: Border.all(
+        color: olive.withOpacity(0.2),
+      ),
+      borderRadius: BorderRadius.circular(30),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          icon,
+          color: olive,
+          size: 20,
+        ),
+
+        const SizedBox(width: 10),
+
+        Text(
+          title,
+          style: const TextStyle(
+            color: olive,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    ),
+  );
+}
   Widget _navText(
-    String text,
-    Color color,
-  ) {
-    return Text(
-      text,
-      style: TextStyle(
-        fontSize: 18,
-        color: color,
-        fontWeight: FontWeight.w500,
+  String text,
+  Color color,
+) {
+  return InkWell(
+    onTap: () {
+      if (text == "How It Works") {
+        _scrollToSection(_howItWorksKey);
+      }
+
+      if (text == "About") {
+        _scrollToSection(_aboutKey);
+      }
+
+      if (text == "Home") {
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 800),
+          curve: Curves.easeInOut,
+        );
+      }
+    },
+    borderRadius: BorderRadius.circular(8),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 4,
+        vertical: 8,
       ),
-    );
-  }
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 18,
+          color: color,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    ),
+  );
+}
 }
