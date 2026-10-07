@@ -79,7 +79,7 @@ class _RegisterPageState extends State<RegisterPage> {
     super.initState();
 
     imageTimer = Timer.periodic(
-      const Duration(seconds: 4),
+      const Duration(seconds: 2),
       (timer) {
         if (!mounted) return;
 
@@ -268,7 +268,7 @@ class _RegisterPageState extends State<RegisterPage> {
   // LOGO
   // ============================================================
 
-  Widget _logo({
+ Widget _logo({
     double width = 200,
     double height = 70,
   }) {
@@ -276,10 +276,9 @@ class _RegisterPageState extends State<RegisterPage> {
       width: width,
       height: height,
       child: Image.asset(
-        'assets/nestcraft.png',
+        'assets/images/nestcraft.png',
         fit: BoxFit.contain,
-        errorBuilder:
-            (context, error, stackTrace) {
+        errorBuilder: (context, error, stackTrace) {
           return const Icon(
             Icons.home_work_rounded,
             size: 40,
@@ -312,13 +311,13 @@ class _RegisterPageState extends State<RegisterPage> {
 
           const Spacer(),
 
-          _navText("Home"),
+          _navText("Home", olive),
           const SizedBox(width: 35),
 
-          _navText("How It Works"),
+          _navText("How It Works", olive),
           const SizedBox(width: 35),
 
-          _navText("About"),
+          _navText("About", olive),
           const SizedBox(width: 35),
 
           GestureDetector(
@@ -338,7 +337,7 @@ class _RegisterPageState extends State<RegisterPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    "Get Started",
+                    "profile",
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 12,
@@ -347,7 +346,7 @@ class _RegisterPageState extends State<RegisterPage> {
                   ),
                   SizedBox(width: 8),
                   Icon(
-                    Icons.arrow_forward_rounded,
+                    Icons.person_add_alt_rounded,
                     color: Colors.white,
                     size: 16,
                   ),
@@ -366,7 +365,10 @@ class _RegisterPageState extends State<RegisterPage> {
   // NAV TEXT
   // ============================================================
 
-  Widget _navText(String text) {
+  Widget _navText(
+    String text,
+    Color color,
+  ) {
     return InkWell(
       onTap: () {
         if (text == "Home") {
@@ -383,16 +385,15 @@ class _RegisterPageState extends State<RegisterPage> {
       },
       borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding:
-            const EdgeInsets.symmetric(
+        padding: const EdgeInsets.symmetric(
           horizontal: 4,
           vertical: 8,
         ),
         child: Text(
           text,
-          style: const TextStyle(
-            fontSize: 15,
-            color: olive,
+          style: TextStyle(
+            fontSize: 18,
+            color: color,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -1307,43 +1308,7 @@ class _RegisterPageState extends State<RegisterPage> {
             },
           ),
 
-          const SizedBox(height: 60),
-
-          Container(
-            padding:
-                const EdgeInsets.symmetric(
-              horizontal: 28,
-              vertical: 18,
-            ),
-            decoration: BoxDecoration(
-              color: brown,
-              borderRadius:
-                  BorderRadius.circular(40),
-            ),
-            child: const Row(
-              mainAxisSize:
-                  MainAxisSize.min,
-              children: [
-                Text(
-                  "Ready to reimagine your space?",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight:
-                        FontWeight.w600,
-                  ),
-                ),
-
-                SizedBox(width: 15),
-
-                Icon(
-                  Icons.arrow_forward_rounded,
-                  color: Colors.white,
-                  size: 19,
-                ),
-              ],
-            ),
-          ),
+          
         ],
       ),
     );
