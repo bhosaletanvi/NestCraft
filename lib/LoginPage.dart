@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:nest_craft/RegisterPage.dart';
@@ -11,7 +12,9 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  // ================= COLORS =================
+  // ============================================================
+  // COLORS
+  // ============================================================
 
   static const Color darkBrown = Color(0xFF2F2922);
   static const Color brown = Color(0xFF6B4528);
@@ -19,12 +22,25 @@ class _LoginPageState extends State<LoginPage> {
   static const Color cream = Color(0xFFF5F0E8);
   static const Color fieldColor = Color(0xFFF8F6F2);
 
-  // ================= CONTROLLERS =================
+  // ============================================================
+  // CONTROLLERS
+  // ============================================================
 
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
 
-  // ================= VARIABLES =================
+  // ============================================================
+  // SCROLL
+  // ============================================================
+
+  final ScrollController _scrollController = ScrollController();
+
+  final GlobalKey _howItWorksKey = GlobalKey();
+  final GlobalKey _aboutKey = GlobalKey();
+
+  // ============================================================
+  // VARIABLES
+  // ============================================================
 
   bool obscurePassword = true;
   bool isLoading = false;
@@ -33,7 +49,9 @@ class _LoginPageState extends State<LoginPage> {
   int currentImage = 0;
   Timer? imageTimer;
 
-  // ================= ROOM IMAGES =================
+  // ============================================================
+  // ROOM IMAGES
+  // ============================================================
 
   final List<String> roomImages = [
     'assets/images/hall.jpg',
@@ -42,7 +60,9 @@ class _LoginPageState extends State<LoginPage> {
     'assets/images/bedroom.jpg',
   ];
 
-  // ================= INIT =================
+  // ============================================================
+  // INIT
+  // ============================================================
 
   @override
   void initState() {
@@ -60,7 +80,9 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // ================= DISPOSE =================
+  // ============================================================
+  // DISPOSE
+  // ============================================================
 
   @override
   void dispose() {
@@ -69,10 +91,43 @@ class _LoginPageState extends State<LoginPage> {
     emailController.dispose();
     passwordController.dispose();
 
+    _scrollController.dispose();
+
     super.dispose();
   }
 
-  // ================= LOGIN =================
+  // ============================================================
+  // SCROLL TO SECTION
+  // ============================================================
+
+  void _scrollToSection(GlobalKey key) {
+    final context = key.currentContext;
+
+    if (context != null) {
+      Scrollable.ensureVisible(
+        context,
+        duration: const Duration(milliseconds: 800),
+        curve: Curves.easeInOut,
+        alignment: 0.05,
+      );
+    }
+  }
+
+  // ============================================================
+  // SCROLL HOME
+  // ============================================================
+
+  void _scrollToHome() {
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 800),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  // ============================================================
+  // LOGIN
+  // ============================================================
 
   Future<void> loginUser() async {
     final email = emailController.text.trim();
@@ -107,6 +162,7 @@ class _LoginPageState extends State<LoginPage> {
 
       // AuthWrapper will automatically detect the login
       // and show the Home Page.
+
     } on FirebaseAuthException catch (e) {
       String message;
 
@@ -138,7 +194,9 @@ class _LoginPageState extends State<LoginPage> {
 
       showMessage(message);
     } catch (e) {
-      showMessage('Something went wrong. Please try again.');
+      showMessage(
+        'Something went wrong. Please try again.',
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -148,7 +206,9 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // ================= MESSAGE =================
+  // ============================================================
+  // MESSAGE
+  // ============================================================
 
   void showMessage(
     String message, {
@@ -167,7 +227,9 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // ================= LOGO =================
+  // ============================================================
+  // LOGO
+  // ============================================================
 
   Widget _logo({
     double width = 200,
@@ -190,7 +252,9 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // ================= DESKTOP NAVBAR =================
+  // ============================================================
+  // DESKTOP NAVBAR
+  // ============================================================
 
   Widget _navbar() {
     return Container(
@@ -199,9 +263,12 @@ class _LoginPageState extends State<LoginPage> {
       padding: const EdgeInsets.symmetric(horizontal: 35),
       child: Row(
         children: [
-          _logo(
-            width: 200,
-            height: 70,
+          GestureDetector(
+            onTap: _scrollToHome,
+            child: _logo(
+              width: 200,
+              height: 70,
+            ),
           ),
 
           const Spacer(),
@@ -230,33 +297,36 @@ class _LoginPageState extends State<LoginPage> {
 
               const SizedBox(width: 35),
 
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 23,
-                  vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  color: brown,
-                  borderRadius: BorderRadius.circular(30),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      "Get Started",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+              GestureDetector(
+                onTap: _scrollToHome,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 23,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: brown,
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        "Get Started",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                    SizedBox(width: 8),
-                    Icon(
-                      Icons.arrow_forward_rounded,
-                      color: Colors.white,
-                      size: 16,
-                    ),
-                  ],
+                      SizedBox(width: 8),
+                      Icon(
+                        Icons.arrow_forward_rounded,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -268,7 +338,9 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // ================= MOBILE NAVBAR =================
+  // ============================================================
+  // MOBILE NAVBAR
+  // ============================================================
 
   Widget _mobileNavbar() {
     return Column(
@@ -280,9 +352,12 @@ class _LoginPageState extends State<LoginPage> {
           ),
           child: Row(
             children: [
-              _logo(
-                width: 160,
-                height: 65,
+              GestureDetector(
+                onTap: _scrollToHome,
+                child: _logo(
+                  width: 160,
+                  height: 65,
+                ),
               ),
 
               const Spacer(),
@@ -332,7 +407,6 @@ class _LoginPageState extends State<LoginPage> {
             child: Column(
               children: [
                 _mobileNavItem("Home"),
-                _mobileNavItem("Features"),
                 _mobileNavItem("How It Works"),
                 _mobileNavItem("About"),
 
@@ -345,6 +419,8 @@ class _LoginPageState extends State<LoginPage> {
                       setState(() {
                         _showMobileNav = false;
                       });
+
+                      _scrollToHome();
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: brown,
@@ -373,12 +449,28 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
+  // ============================================================
+  // MOBILE NAV ITEM
+  // ============================================================
+
   Widget _mobileNavItem(String title) {
     return InkWell(
       onTap: () {
         setState(() {
           _showMobileNav = false;
         });
+
+        if (title == "Home") {
+          _scrollToHome();
+        }
+
+        if (title == "How It Works") {
+          _scrollToSection(_howItWorksKey);
+        }
+
+        if (title == "About") {
+          _scrollToSection(_aboutKey);
+        }
       },
       child: Container(
         width: double.infinity,
@@ -397,7 +489,9 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // ================= ROOM IMAGE =================
+  // ============================================================
+  // ROOM IMAGE
+  // ============================================================
 
   Widget _roomImage() {
     return AnimatedSwitcher(
@@ -424,7 +518,9 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // ================= DESKTOP IMAGE SECTION =================
+  // ============================================================
+  // DESKTOP IMAGE SECTION
+  // ============================================================
 
   Widget _imageSection() {
     return Padding(
@@ -505,7 +601,9 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // ================= TEXT FIELD =================
+  // ============================================================
+  // TEXT FIELD
+  // ============================================================
 
   Widget _textField({
     required TextEditingController controller,
@@ -576,7 +674,9 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // ================= LOGIN FORM =================
+  // ============================================================
+  // LOGIN FORM
+  // ============================================================
 
   Widget _loginForm() {
     return Container(
@@ -807,7 +907,9 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // ================= MOBILE IMAGE =================
+  // ============================================================
+  // MOBILE IMAGE
+  // ============================================================
 
   Widget _mobileImage() {
     return Padding(
@@ -834,7 +936,8 @@ class _LoginPageState extends State<LoginPage> {
                 top: 35,
                 right: 20,
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
                   children: [
                     const Text(
                       'CREATE YOUR SPACE',
@@ -891,7 +994,536 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // ================= BUILD =================
+  // ============================================================
+  // HOW IT WORKS SECTION
+  // ============================================================
+
+  Widget _howItWorksSection() {
+    final steps = [
+      {
+        "number": "01",
+        "icon": Icons.add_photo_alternate_outlined,
+        "title": "Upload Your Space",
+        "description":
+            "Start by uploading a photo of your room. It can be your living room, bedroom, kitchen, or any space you want to redesign.",
+      },
+      {
+        "number": "02",
+        "icon": Icons.auto_awesome_outlined,
+        "title": "Get Design Ideas",
+        "description":
+            "NestCraft analyzes your room and provides creative interior ideas that match your space and preferences.",
+      },
+      {
+        "number": "03",
+        "icon": Icons.tune_outlined,
+        "title": "Personalize Everything",
+        "description":
+            "Change furniture, colors and decorations. Move objects around and experiment until the room feels right.",
+      },
+      {
+        "number": "04",
+        "icon": Icons.shopping_bag_outlined,
+        "title": "Explore Alternatives",
+        "description":
+            "Discover alternative furniture and decor options with prices so you can find choices that fit your style and budget.",
+      },
+      {
+        "number": "05",
+        "icon": Icons.home_outlined,
+        "title": "Transform Your Space",
+        "description":
+            "Save your final design and turn your vision into a beautiful, personalized space you'll love.",
+      },
+    ];
+
+    return Container(
+      key: _howItWorksKey,
+      width: double.infinity,
+      color: const Color(0xFFF8F5EF),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 30,
+        vertical: 85,
+      ),
+      child: Column(
+        children: [
+          const Text(
+            "HOW IT WORKS",
+            style: TextStyle(
+              color: olive,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 3,
+            ),
+          ),
+
+          const SizedBox(height: 14),
+
+          const Text(
+            "From Empty Space\nTo Your Dream Space",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: olive,
+              fontSize: 38,
+              fontWeight: FontWeight.w700,
+              height: 1.15,
+            ),
+          ),
+
+          const SizedBox(height: 18),
+
+          ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: 650,
+            ),
+            child: const Text(
+              "A simple design journey that helps you imagine, customize and create a space that feels uniquely yours.",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: olive,
+                fontSize: 15,
+                height: 1.6,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 60),
+
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final bool smallScreen =
+                  constraints.maxWidth < 850;
+
+              if (smallScreen) {
+                return Column(
+                  children: [
+                    for (int i = 0;
+                        i < steps.length;
+                        i++)
+                      _howItWorksVerticalStep(
+                        number:
+                            steps[i]["number"] as String,
+                        icon:
+                            steps[i]["icon"] as IconData,
+                        title:
+                            steps[i]["title"] as String,
+                        description:
+                            steps[i]["description"]
+                                as String,
+                        isLast: i == steps.length - 1,
+                      ),
+                  ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  for (int i = 0;
+                      i < steps.length;
+                      i++)
+                    Expanded(
+                      child: _howItWorksDesktopStep(
+                        number:
+                            steps[i]["number"] as String,
+                        icon:
+                            steps[i]["icon"] as IconData,
+                        title:
+                            steps[i]["title"] as String,
+                        description:
+                            steps[i]["description"]
+                                as String,
+                        isLast: i == steps.length - 1,
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+
+          
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // DESKTOP HOW IT WORKS STEP
+  // ============================================================
+
+  Widget _howItWorksDesktopStep({
+    required String number,
+    required IconData icon,
+    required String title,
+    required String description,
+    required bool isLast,
+  }) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: olive,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: olive.withOpacity(0.18),
+                    blurRadius: 15,
+                    offset: const Offset(0, 7),
+                  ),
+                ],
+              ),
+              child: Icon(
+                icon,
+                color: Colors.white,
+                size: 27,
+              ),
+            ),
+
+            if (!isLast)
+              Expanded(
+                child: Container(
+                  height: 1,
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                  ),
+                  color: olive.withOpacity(0.25),
+                ),
+              ),
+          ],
+        ),
+
+        const SizedBox(height: 20),
+
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            number,
+            style: TextStyle(
+              color: brown.withOpacity(0.6),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1,
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 7),
+
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            title,
+            style: const TextStyle(
+              color: olive,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              height: 1.2,
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 10),
+
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.only(
+              right: 20,
+            ),
+            child: Text(
+              description,
+              style: const TextStyle(
+                color: olive,
+                fontSize: 12.5,
+                height: 1.55,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ============================================================
+  // MOBILE HOW IT WORKS STEP
+  // ============================================================
+
+  Widget _howItWorksVerticalStep({
+    required String number,
+    required IconData icon,
+    required String title,
+    required String description,
+    required bool isLast,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Column(
+          children: [
+            Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                color: olive,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: olive.withOpacity(0.18),
+                    blurRadius: 12,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Icon(
+                icon,
+                color: Colors.white,
+                size: 24,
+              ),
+            ),
+
+            if (!isLast)
+              Container(
+                width: 1,
+                height: 75,
+                color: olive.withOpacity(0.25),
+              ),
+          ],
+        ),
+
+        const SizedBox(width: 18),
+
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(
+              bottom: 30,
+            ),
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  number,
+                  style: TextStyle(
+                    color: brown.withOpacity(0.65),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1,
+                  ),
+                ),
+
+                const SizedBox(height: 5),
+
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: olive,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+
+                const SizedBox(height: 7),
+
+                Text(
+                  description,
+                  style: const TextStyle(
+                    color: olive,
+                    fontSize: 13,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ============================================================
+  // ABOUT SECTION
+  // ============================================================
+
+  Widget _aboutSection() {
+    return Container(
+      key: _aboutKey,
+      width: double.infinity,
+      color: cream,
+      padding: const EdgeInsets.symmetric(
+        horizontal: 40,
+        vertical: 80,
+      ),
+      child: Column(
+        children: [
+          const Text(
+            "ABOUT NESTCRAFT",
+            style: TextStyle(
+              color: olive,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 2,
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          const Text(
+            "Imagine. Change. Live.",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: olive,
+              fontSize: 34,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+
+          const SizedBox(height: 18),
+
+          ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: 800,
+            ),
+            child: const Text(
+              "NestCraft is an interior design platform that helps you reimagine your living space. Upload your room, explore creative design ideas, customize furniture and decor, and discover alternatives that match your style and budget.",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: olive,
+                fontSize: 15,
+                height: 1.7,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 40),
+
+          Wrap(
+            spacing: 25,
+            runSpacing: 20,
+            alignment: WrapAlignment.center,
+            children: [
+              _aboutItem(
+                Icons.design_services_outlined,
+                "Personalized Design",
+              ),
+              _aboutItem(
+                Icons.auto_awesome_outlined,
+                "Smart Suggestions",
+              ),
+              _aboutItem(
+                Icons.account_balance_wallet_outlined,
+                "Budget Friendly",
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 45),
+
+          Container(
+            width: double.infinity,
+            constraints: const BoxConstraints(
+              maxWidth: 850,
+            ),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 30,
+              vertical: 30,
+            ),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8F5EF),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: olive.withOpacity(0.12),
+              ),
+            ),
+            child: Column(
+              children: [
+                const Icon(
+                  Icons.home_work_outlined,
+                  color: olive,
+                  size: 34,
+                ),
+
+                const SizedBox(height: 15),
+
+                const Text(
+                  "Your Space. Your Style. Your Story.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: olive,
+                    fontSize: 21,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                Text(
+                  "NestCraft brings creativity, personalization and practical choices together to make interior design simple and enjoyable.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: olive.withOpacity(0.85),
+                    fontSize: 13,
+                    height: 1.6,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // ABOUT ITEM
+  // ============================================================
+
+  Widget _aboutItem(
+    IconData icon,
+    String title,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 22,
+        vertical: 15,
+      ),
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: olive.withOpacity(0.2),
+        ),
+        borderRadius: BorderRadius.circular(30),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            color: olive,
+            size: 20,
+          ),
+
+          const SizedBox(width: 10),
+
+          Text(
+            title,
+            style: const TextStyle(
+              color: olive,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // BUILD
+  // ============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -899,47 +1531,89 @@ class _LoginPageState extends State<LoginPage> {
       backgroundColor: cream,
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final bool isMobile = constraints.maxWidth < 800;
+          final bool isMobile =
+              constraints.maxWidth < 800;
 
-          // ================= MOBILE =================
+          // ====================================================
+          // MOBILE
+          // ====================================================
 
           if (isMobile) {
             return SafeArea(
               child: SingleChildScrollView(
+                controller: _scrollController,
                 child: Column(
                   children: [
+                    // NAVBAR
                     _mobileNavbar(),
+
+                    // HOME
                     _mobileImage(),
+
                     _loginForm(),
+
+                    // HOW IT WORKS
+                    _howItWorksSection(),
+
+                    // ABOUT
+                    _aboutSection(),
                   ],
                 ),
               ),
             );
           }
 
-          // ================= DESKTOP =================
+          // ====================================================
+          // DESKTOP
+          // ====================================================
+
+          final double mainHeight =
+              constraints.maxHeight > 78
+                  ? constraints.maxHeight - 78
+                  : 650;
 
           return SafeArea(
-            child: Column(
-              children: [
-                _navbar(),
+            child: SingleChildScrollView(
+              controller: _scrollController,
+              child: Column(
+                children: [
+                  // NAVBAR
+                  _navbar(),
 
-                Expanded(
-                  child: Row(
-                    children: [
-                      Expanded(
-                        flex: 6,
-                        child: _imageSection(),
-                      ),
+                  // ==================================================
+                  // HOME / LOGIN SECTION
+                  // ==================================================
 
-                      Expanded(
-                        flex: 4,
-                        child: _loginForm(),
-                      ),
-                    ],
+                  SizedBox(
+                    height: mainHeight,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          flex: 6,
+                          child: _imageSection(),
+                        ),
+
+                        Expanded(
+                          flex: 4,
+                          child: _loginForm(),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+
+                  // ==================================================
+                  // HOW IT WORKS
+                  // ==================================================
+
+                  _howItWorksSection(),
+
+                  // ==================================================
+                  // ABOUT
+                  // ==================================================
+
+                  _aboutSection(),
+                ],
+              ),
             ),
           );
         },
@@ -947,18 +1621,42 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // ================= NAV TEXT =================
+  // ============================================================
+  // NAV TEXT
+  // ============================================================
 
   Widget _navText(
     String text,
     Color color,
   ) {
-    return Text(
-      text,
-      style: TextStyle(
-        fontSize: 18,
-        color: color,
-        fontWeight: FontWeight.w500,
+    return InkWell(
+      onTap: () {
+        if (text == "Home") {
+          _scrollToHome();
+        }
+
+        if (text == "How It Works") {
+          _scrollToSection(_howItWorksKey);
+        }
+
+        if (text == "About") {
+          _scrollToSection(_aboutKey);
+        }
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 4,
+          vertical: 8,
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontSize: 18,
+            color: color,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
       ),
     );
   }

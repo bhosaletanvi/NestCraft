@@ -1,9 +1,8 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:nest_craft/LandingPage.dart';
-import 'package:nest_craft/authWrapper.dart';
-import 'package:nest_craft/firebase_options.dart';
 
+import 'package:nest_craft/firebase_options.dart';
 void main() async{
   WidgetsFlutterBinding.ensureInitialized();
 
