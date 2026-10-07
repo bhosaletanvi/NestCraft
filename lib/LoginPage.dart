@@ -69,7 +69,7 @@ class _LoginPageState extends State<LoginPage> {
     super.initState();
 
     imageTimer = Timer.periodic(
-      const Duration(seconds: 4),
+      const Duration(seconds: 2),
       (timer) {
         if (!mounted) return;
 
@@ -312,7 +312,7 @@ class _LoginPageState extends State<LoginPage> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        "Get Started",
+                        "profile",
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 12,
@@ -321,7 +321,7 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       SizedBox(width: 8),
                       Icon(
-                        Icons.arrow_forward_rounded,
+                        Icons.person_add_alt_rounded,
                         color: Colors.white,
                         size: 16,
                       ),
