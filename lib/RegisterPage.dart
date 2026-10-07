@@ -283,7 +283,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // ================= MOBILE NAVBAR =================
+  // ----------- MOBILE NAVBAR 
 
   Widget _mobileNavbar() {
     return Container(
