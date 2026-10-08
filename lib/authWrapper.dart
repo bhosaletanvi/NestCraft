@@ -19,7 +19,6 @@ class AuthWrapper extends StatelessWidget {
             ),
           );
         }
-
         if (snapshot.hasData) {
   print("going to homepage");
 
