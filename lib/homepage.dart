@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:nest_craft/uploadimg.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -1420,7 +1421,7 @@ _buildInspirations(),
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => const AIDesignPage(),
+            builder: (context) => const Uploadimg(),
           ),
         );
       },
@@ -1630,39 +1631,6 @@ _buildInspirations(),
 // AI DESIGN PAGE
 // ============================================================
 
-class AIDesignPage extends StatelessWidget {
-  const AIDesignPage({super.key});
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F0E8),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFF5F0E8),
-        elevation: 0,
-        title: const Text(
-          'Create Your Design',
-          style: TextStyle(
-            color: Color(0xFF2F2922),
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        iconTheme: const IconThemeData(
-          color: Color(0xFF2F2922),
-        ),
-      ),
-      body: const Center(
-        child: Text(
-          'AI Interior Designer\n\n'
-          'We will build this screen next.',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 24,
-            color: Color(0xFF2F2922),
-          ),
-        ),
-      ),
-    );
-  }
-}
+
 
