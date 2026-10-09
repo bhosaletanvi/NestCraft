@@ -1224,34 +1224,7 @@ _buildInspirations(),
 
                 const SizedBox(height: 25),
 
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 14,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.search),
-
-                      SizedBox(width: 10),
-
-                      Expanded(
-                        child: Text(
-                          'Search designs, rooms or styles...',
-                          style: TextStyle(
-                            color: Colors.grey,
-                          ),
-                        ),
-                      ),
-
-                      Icon(Icons.tune),
-                    ],
-                  ),
-                ),
+               
               ],
             ),
           ),
