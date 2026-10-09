@@ -1421,7 +1421,7 @@ _buildInspirations(),
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => const Uploadimg(),
+            builder: (context) => const UplodeImg(),
           ),
         );
       },
