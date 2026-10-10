@@ -184,12 +184,8 @@ Widget _navbar() {
         _navText("About", olive),
         const SizedBox(width: 35),
 
-        GestureDetector(
-          onTap: _scrollToHome,
-          child: _profileMenu(),
-        ),
-
-        const SizedBox(width: 25),
+         _profileMenu(),
+                const SizedBox(width: 25),
       ],
     ),
   );
@@ -204,95 +200,89 @@ Widget _profileMenu() {
       final userName = snapshot.data ?? "Profile";
 
       return PopupMenuButton<String>(
+        tooltip: "User Profile",
         onSelected: (value) async {
           if (value == 'profile') {
-            // Navigate to profile page
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text("Logged in as $userName"),
+              ),
+            );
           } else if (value == 'logout') {
             await FirebaseAuth.instance.signOut();
           }
         },
-
         offset: const Offset(0, 50),
-
         color: Colors.white,
-
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
         ),
-
-        itemBuilder: (context) {
-          return [
-            PopupMenuItem(
-              value: 'profile',
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.person_outline,
-                    color: Color(0xFF66704A),
+        itemBuilder: (context) => [
+          PopupMenuItem<String>(
+            value: 'profile',
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.person_outline,
+                  color: olive,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  userName,
+                  style: const TextStyle(
+                    color: darkBrown,
+                    fontWeight: FontWeight.w600,
                   ),
-                  const SizedBox(width: 10),
-
-                  Text(
-                    userName,
-                    style: const TextStyle(
-                      color: Colors.black87,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-
-            const PopupMenuItem(
-              value: 'logout',
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.logout_rounded,
+          ),
+          const PopupMenuItem<String>(
+            value: 'logout',
+            child: Row(
+              children: [
+                Icon(
+                  Icons.logout_rounded,
+                  color: Colors.redAccent,
+                ),
+                SizedBox(width: 10),
+                Text(
+                  'Logout',
+                  style: TextStyle(
                     color: Colors.redAccent,
                   ),
-                  SizedBox(width: 10),
-
-                  Text(
-                    'Logout',
-                    style: TextStyle(
-                      color: Colors.redAccent,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ];
-        },
-
+          ),
+        ],
         child: Container(
           padding: const EdgeInsets.symmetric(
             horizontal: 16,
             vertical: 10,
           ),
-
           decoration: BoxDecoration(
-            color: const Color(0xFF66704A),
+            color: olive,
             borderRadius: BorderRadius.circular(25),
           ),
-
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                userName,
+                snapshot.connectionState == ConnectionState.waiting
+                    ? "Loading..."
+                    : userName,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 12,
+                  fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-
               const SizedBox(width: 8),
-
               const Icon(
-                Icons.person_add_alt_rounded,
+                Icons.person_outline,
                 color: Colors.white,
-                size: 16,
+                size: 18,
               ),
             ],
           ),
@@ -301,25 +291,40 @@ Widget _profileMenu() {
     },
   );
 }
+
 Future<String> _getUserName() async {
   final user = FirebaseAuth.instance.currentUser;
 
   if (user == null) {
-    return "null Profile";
+    return "Guest Profile";
   }
 
-  final doc = await FirebaseFirestore.instance
-      .collection('users')
-      .doc(user!.uid)
-      .get();
+  try {
+    final query = await FirebaseFirestore.instance
+        .collection('users')
+        .where('userId', isEqualTo: user.uid)
+        .limit(1)
+        .get();
 
-  if (doc.exists) {
-    return doc.data()?['username'] ?? "Profile";
+    if (query.docs.isNotEmpty) {
+      final data = query.docs.first.data();
+
+      print("Document ID: ${query.docs.first.id}");
+      print("User name: ${data['name']}");
+
+      return data['name'] ?? "Profile";
+    }
+
+    print("No user document found for UID: ${user.uid}");
+    return "Profile";
+  } catch (e) {
+    print("Error fetching user name: $e");
+    return "Profile";
   }
-
-  return "Profile";
 }
- Widget _mobileNavbar() {
+ 
+ 
+Widget _mobileNavbar() {
   return Column(
     children: [
       Padding(
@@ -392,36 +397,8 @@ Future<String> _getUserName() async {
 
               const SizedBox(height: 8),
 
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      _showMobileNav = false;
-                    });
-
-                    _scrollToHome();
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: brown,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 13,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(25),
-                    ),
-                  ),
-                  child: const Text(
-                    "Get Started",
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
+                _profileMenu(),
+                const SizedBox(width: 25),
             ],
           ),
         ),
@@ -1292,35 +1269,101 @@ _buildInspirations(),
   // DESIGN LIST
   // ============================================================
 
-  Widget _buildDesignList() {
-    return SizedBox(
-      height: 230,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        children: [
-          ...myDesigns.map(
-            (design) => _buildDesignCard(design),
-          ),
+Widget _buildDesignList() {
+  final user = FirebaseAuth.instance.currentUser;
 
-          // LET'S DESIGN CARD
-          _buildLetsDesignCard(),
-        ],
-      ),
+  if (user == null) {
+    return const Center(
+      child: Text("Please log in to view your designs"),
     );
   }
+
+  return SizedBox(
+    height: 230,
+    child: StreamBuilder<
+        QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('projects')
+          .where('userId', isEqualTo: user.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return const Center(
+            child: Text("Unable to load projects"),
+          );
+        }
+
+        if (snapshot.connectionState ==
+                ConnectionState.waiting &&
+            !snapshot.hasData) {
+          return const Center(
+            child: CircularProgressIndicator(),
+          );
+        }
+
+        final projects = snapshot.data?.docs ?? [];
+
+        if (projects.isEmpty) {
+          return ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              _buildLetsDesignCard(),
+            ],
+          );
+        }
+
+        return ListView(
+          scrollDirection: Axis.horizontal,
+          children: [
+            ...projects.map((doc) {
+              final data = doc.data();
+
+              return _buildDesignCard({
+                'id': doc.id,
+                'image': data['uploadedimg_url'] ?? '',
+                'title': data['projectName'] ?? 'Untitled Project',
+                'date': data['projectType'] ?? 'Room Design',
+              });
+            }),
+            _buildLetsDesignCard(),
+          ],
+        );
+      },
+    ),
+  );
+}
 
   // ============================================================
   // USER DESIGN CARD
   // ============================================================
 
-  Widget _buildDesignCard(
-    Map<String, String> design,
-  ) {
-    return Container(
+  Widget _buildDesignCard(Map<String, String> design) {
+  return GestureDetector(
+    onTap: () {
+      final imageUrl = design['image'] ?? '';
+
+      if (imageUrl.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("No image URL found for this project"),
+          ),
+        );
+        return;
+      }
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ProjectImagePage(
+            imageUrl: imageUrl,
+            projectName: design['title'] ?? 'My Design',
+          ),
+        ),
+      );
+    },
+    child: Container(
       width: 250,
-      margin: const EdgeInsets.only(
-        right: 18,
-      ),
+      margin: const EdgeInsets.only(right: 18),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(15),
@@ -1333,44 +1376,37 @@ _buildInspirations(),
               top: Radius.circular(15),
             ),
             child: Image.network(
-              design['image']!,
+              design['image'] ?? '',
               height: 145,
               width: double.infinity,
               fit: BoxFit.cover,
-              errorBuilder: (
-                context,
-                error,
-                stackTrace,
-              ) {
+              errorBuilder: (context, error, stackTrace) {
                 return Container(
                   height: 145,
                   color: Colors.grey[300],
                   child: const Center(
-                    child: Icon(
-                      Icons.image_not_supported,
-                    ),
+                    child: Icon(Icons.image_not_supported),
                   ),
                 );
               },
             ),
           ),
-
           Padding(
             padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  design['title']!,
+                  design['title'] ?? 'Untitled Project',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-
                 const SizedBox(height: 5),
-
                 Text(
-                  design['date']!,
+                  design['date'] ?? 'Room Design',
                   style: const TextStyle(
                     fontSize: 12,
                     color: Colors.grey,
@@ -1381,9 +1417,9 @@ _buildInspirations(),
           ),
         ],
       ),
-    );
-  }
-
+    ),
+  );
+}
   // ============================================================
   // LET'S DESIGN NEW
   // ============================================================
@@ -1607,3 +1643,44 @@ _buildInspirations(),
 
 
 
+
+
+
+
+
+
+
+
+class ProjectImagePage extends StatelessWidget {
+  final String imageUrl;
+  final String projectName;
+
+  const ProjectImagePage({
+    super.key,
+    required this.imageUrl,
+    required this.projectName,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(projectName),
+      ),
+      body: Center(
+        child: Image.network(
+          imageUrl,
+          fit: BoxFit.contain,
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) return child;
+
+            return const CircularProgressIndicator();
+          },
+          errorBuilder: (context, error, stackTrace) {
+            return const Text("Unable to load image");
+          },
+        ),
+      ),
+    );
+  }
+}
