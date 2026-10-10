@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class UplodeImg extends StatefulWidget {
   const UplodeImg({super.key});
@@ -24,16 +25,23 @@ class _UplodeImgState extends State<UplodeImg> {
   static const Color darkBrown = Color(0xFF3E2C1E);
   static const Color lightBrown = Color(0xFF9A795A);
 
+// img showing variables
+String? uploadedImageUrl;
+bool isUploading = false;
+String? projectId;
+
   // ============================================================
   // VARIABLES
   // ============================================================
 
   int selectedRoom = 0;
   int selectedBudget = 0;
-
+  String selectedProjectType = "";
+  int maxbudget = 0;
   Uint8List? uploadedImageBytes;
- bool _showMobileNav = false;
+  bool _showMobileNav = false;
   final ImagePicker imagePicker = ImagePicker();
+  final TextEditingController projectNameController = TextEditingController();
   // ============================================================
   // SCROLL
   // ============================================================
@@ -122,6 +130,7 @@ class _UplodeImgState extends State<UplodeImg> {
     "icon": Icons.fitness_center_outlined,
   },
 ];
+
   // ============================================================
   // BUDGET
   // ============================================================
@@ -135,6 +144,30 @@ final budgets = [
       "₹2,00,000 - ₹5,00,000",
       "Above ₹5,00,000",
     ];
+    @override
+void dispose() {
+  projectNameController.dispose();
+  super.dispose();
+}
+//----------max budget selection fun
+int getMaxBudget(String budget) {
+  if (budget.startsWith("Below")) {
+    return 10000;
+  }
+
+  if (budget.startsWith("Above")) {
+    return 500000; // Minimum amount for Above ₹5,00,000
+  }
+
+  // Get the amount after the hyphen
+  final parts = budget.split('-');
+  final maxAmount = parts.last
+      .replaceAll('₹', '')
+      .replaceAll(',', '')
+      .trim();
+
+  return int.parse(maxAmount);
+}
     // ============================================================
   // SCROLL TO SECTION
   // ============================================================
@@ -151,7 +184,157 @@ final budgets = [
       );
     }
   }
+  //ulpad seletced img to supabase
+ Future<String?> uploadToSupabase() async {
+    print("user : ${FirebaseAuth.instance.currentUser?.uid}");
+    if (selectedImg == null) {
+      print("No image selected");
+      return null;
+    }
 
+    try {
+      print("selected img : ${selectedImg!.path}");
+      final Uint8List bytes = await selectedImg!.readAsBytes();
+      print("${bytes}");
+      final String fileName =
+          '${DateTime.now().microsecondsSinceEpoch}_${selectedImg!.name}';
+      print("${fileName}");
+      await Supabase.instance.client.storage
+          .from("uploaded_images")
+          .uploadBinary(
+            fileName,
+            bytes,
+          );
+
+      print("Image added to Supabase Storage");
+
+      final String url = Supabase.instance.client.storage
+          .from("uploaded_images")
+          .getPublicUrl(fileName);
+
+      print("Image URL: $url");
+
+      return url;
+   } on StorageException catch (e) {
+  print("StorageException");
+  print("Message: ${e.message}");
+  print("Status code: ${e.statusCode}");
+  print("Error: ${e.error}");
+  return null;
+} catch (e) {
+  print("Other error: $e");
+  return null;
+}
+  }
+
+  // Add course to Firestore
+Future<void> addimage() async {
+  if (selectedImg == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Please select an image first"),
+      ),
+    );
+    return;
+  }
+
+ final projectName = projectNameController.text.trim();
+final user = FirebaseAuth.instance.currentUser;
+
+if (projectName.isEmpty) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text("Please enter a project name"),
+    ),
+  );
+  return;
+}
+
+if (user == null) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text("Please log in first"),
+    ),
+  );
+  return;
+}
+
+// Check whether the project name already exists for this user.
+final existingProject = await FirebaseFirestore.instance
+    .collection('projects')
+    .where('userId', isEqualTo: user.uid)
+    .where('projectName', isEqualTo: projectName)
+    .limit(1)
+    .get();
+
+if (existingProject.docs.isNotEmpty) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text(
+        "Project name already exists. Please choose another name.",
+      ),
+    ),
+  );
+  return;
+}
+
+// Continue with your image upload and Firestore save here.
+
+  if (selectedProjectType.trim().isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Please select a project type"),
+      ),
+    );
+    return;
+  }
+
+  setState(() {
+    isUploading = true;
+  });
+
+  try {
+    // 1. Upload image to Supabase Storage
+    final String? imgUrl = await uploadToSupabase();
+
+    if (imgUrl == null) {
+      throw Exception("Image upload failed");
+    }
+
+    // 2. Save image URL and project details in Firestore
+    await FirebaseFirestore.instance.collection("projects").add({
+      "userId": FirebaseAuth.instance.currentUser!.uid,
+      "uploadedimg_url": imgUrl,
+      "projectName": projectNameController.text.trim(),
+      "projectType": selectedProjectType,
+      "maxBudget": maxbudget,
+    });
+
+    if (!mounted) return;
+
+    // 3. Update UI after successful upload
+    setState(() {
+      uploadedImageUrl = imgUrl;
+      isUploading = false;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Image uploaded successfully"),
+      ),
+    );
+  } catch (e) {
+    if (!mounted) return;
+
+    setState(() {
+      isUploading = false;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Upload failed: $e")),
+    );
+  }
+}
   // ============================================================
   // SCROLL HOME
   // ============================================================
@@ -168,32 +351,38 @@ final budgets = [
   // IMAGE PICKER
   // ============================================================
 
+XFile? selectedImg;
+  // Pick image
   Future<void> pickImage() async {
-    try {
-      final XFile? pickedImage = await imagePicker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 85,
-      );
+  try {
+    final XFile? image = await imagePicker.pickImage(
+      source: ImageSource.gallery,
+    );
 
-      if (pickedImage == null) {
-        return;
-      }
+    if (image == null) return;
 
-      final Uint8List bytes = await pickedImage.readAsBytes();
+    final Uint8List bytes = await image.readAsBytes();
 
-      setState(() {
-        uploadedImageBytes = bytes;
-      });
-    } catch (e) {
-      if (!mounted) return;
+    if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Unable to select image: $e"),
-        ),
-      );
-    }
+    setState(() {
+      selectedImg = image;
+      uploadedImageBytes = bytes;
+    });
+
+    debugPrint("Image selected: ${image.name}");
+    debugPrint("Image bytes: ${bytes.length}");
+  } catch (e) {
+    debugPrint("Error picking image: $e");
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Unable to select image: $e")),
+    );
   }
+}
+
 
   // ============================================================
   // NAVBAR
@@ -301,44 +490,8 @@ final budgets = [
 
                 const SizedBox(height: 8),
 
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        _showMobileNav = false;
-                      });
-
-                      _scrollToHome();
-                    },
-                    style:
-                        ElevatedButton.styleFrom(
-                      backgroundColor: brown,
-                      foregroundColor:
-                          Colors.white,
-                      elevation: 0,
-                      padding:
-                          const EdgeInsets.symmetric(
-                        vertical: 13,
-                      ),
-                      shape:
-                          RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(
-                          25,
-                        ),
-                      ),
-                    ),
-                    child: const Text(
-                      "Get Started",
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight:
-                            FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
+                _profileMenu(),
+              const SizedBox(width: 25),
               ],
             ),
           ),
@@ -415,113 +568,104 @@ final budgets = [
 
         _navText("About", olive),
         const SizedBox(width: 35),
+_profileMenu(),
+const SizedBox(width: 25),
 
-        GestureDetector(
-          onTap: _scrollToHome,
-          child: _profileMenu(),
-        ),
-
-        const SizedBox(width: 25),
       ],
     ),
   );
 }
- Widget _profileMenu() {
+
+Widget _profileMenu() {
   return FutureBuilder<String>(
     future: _getUserName(),
     builder: (context, snapshot) {
       final userName = snapshot.data ?? "Profile";
 
       return PopupMenuButton<String>(
+        tooltip: "User Profile",
         onSelected: (value) async {
           if (value == 'profile') {
-            // Navigate to profile page
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text("Logged in as $userName"),
+              ),
+            );
           } else if (value == 'logout') {
             await FirebaseAuth.instance.signOut();
           }
         },
-
         offset: const Offset(0, 50),
-
         color: Colors.white,
-
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
         ),
-
-        itemBuilder: (context) {
-          return [
-            PopupMenuItem(
-              value: 'profile',
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.person_outline,
-                    color: Color(0xFF66704A),
+        itemBuilder: (context) => [
+          PopupMenuItem<String>(
+            value: 'profile',
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.person_outline,
+                  color: olive,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  userName,
+                  style: const TextStyle(
+                    color: darkBrown,
+                    fontWeight: FontWeight.w600,
                   ),
-                  const SizedBox(width: 10),
-
-                  Text(
-                    userName,
-                    style: const TextStyle(
-                      color: Colors.black87,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-
-            const PopupMenuItem(
-              value: 'logout',
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.logout_rounded,
+          ),
+          const PopupMenuItem<String>(
+            value: 'logout',
+            child: Row(
+              children: [
+                Icon(
+                  Icons.logout_rounded,
+                  color: Colors.redAccent,
+                ),
+                SizedBox(width: 10),
+                Text(
+                  'Logout',
+                  style: TextStyle(
                     color: Colors.redAccent,
                   ),
-                  SizedBox(width: 10),
-
-                  Text(
-                    'Logout',
-                    style: TextStyle(
-                      color: Colors.redAccent,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ];
-        },
-
+          ),
+        ],
         child: Container(
           padding: const EdgeInsets.symmetric(
             horizontal: 16,
             vertical: 10,
           ),
-
           decoration: BoxDecoration(
-            color: const Color(0xFF66704A),
+            color: olive,
             borderRadius: BorderRadius.circular(25),
           ),
-
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                userName,
+                snapshot.connectionState == ConnectionState.waiting
+                    ? "Loading..."
+                    : userName,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 12,
+                  fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-
               const SizedBox(width: 8),
-
               const Icon(
-                Icons.person_add_alt_rounded,
+                Icons.person_outline,
                 color: Colors.white,
-                size: 16,
+                size: 18,
               ),
             ],
           ),
@@ -530,23 +674,36 @@ final budgets = [
     },
   );
 }
+
 Future<String> _getUserName() async {
   final user = FirebaseAuth.instance.currentUser;
 
   if (user == null) {
-    return "null Profile";
+    return "Guest Profile";
   }
 
-  final doc = await FirebaseFirestore.instance
-      .collection('users')
-      .doc(user!.uid)
-      .get();
+  try {
+    final query = await FirebaseFirestore.instance
+        .collection('users')
+        .where('userId', isEqualTo: user.uid)
+        .limit(1)
+        .get();
 
-  if (doc.exists) {
-    return doc.data()?['username'] ?? "Profile";
+    if (query.docs.isNotEmpty) {
+      final data = query.docs.first.data();
+
+      print("Document ID: ${query.docs.first.id}");
+      print("User name: ${data['name']}");
+
+      return data['name'] ?? "Profile";
+    }
+
+    print("No user document found for UID: ${user.uid}");
+    return "Profile";
+  } catch (e) {
+    print("Error fetching user name: $e");
+    return "Profile";
   }
-
-  return "Profile";
 }
  
   // ============================================================
@@ -603,6 +760,8 @@ Widget _navText(
     onTap: () {
       setState(() {
         selectedRoom = index;
+        selectedProjectType=roomTypes[selectedRoom]["name"] ;
+
       });
     },
     child: AnimatedContainer(
@@ -712,6 +871,8 @@ Widget _navText(
     onTap: () {
       setState(() {
         selectedBudget = index;
+        maxbudget = getMaxBudget(budgets[selectedBudget]);
+
       });
     },
     child: AnimatedContainer(
@@ -822,148 +983,360 @@ Widget _navText(
   // UPLOAD IMAGE BOX
   // ============================================================
 
-  Widget _uploadImageBox() {
-    return GestureDetector(
-      onTap: pickImage,
-      child: Container(
+Widget _uploadImageBox() {
+  return LayoutBuilder(
+    builder: (context, constraints) {
+      final bool isMobile = constraints.maxWidth < 650;
+
+      Widget uploadArea = GestureDetector(
+        onTap: pickImage,
+        child: Container(
+          width: double.infinity,
+          height: isMobile ? 300 : 600,
+          decoration: BoxDecoration(
+            color: cream,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: olive.withOpacity(0.4),
+              width: 1.4,
+            ),
+          ),
+          child: uploadedImageBytes != null
+    ? Image.memory(
+        uploadedImageBytes!,
+        fit: BoxFit.contain,
+      )
+    : uploadedImageUrl != null
+        ? Image.network(
+            uploadedImageUrl!,
+            fit: BoxFit.contain,
+            loadingBuilder: (context, child, progress) {
+              if (progress == null) return child;
+
+              return const Center(
+                child: CircularProgressIndicator(),
+              );
+            },
+            errorBuilder: (context, error, stackTrace) {
+              return const Center(
+                child: Text("Unable to load uploaded image"),
+              );
+            },
+          )
+        :  Center(
+  child: Column(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      Container(
+        width: 55,
+        height: 55,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(
+          Icons.add_photo_alternate_outlined,
+          color: olive,
+          size: 28,
+        ),
+      ),
+      const SizedBox(height: 12),
+      const Text(
+        "Upload Room Image",
+        style: TextStyle(
+          color: darkBrown,
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      const SizedBox(height: 6),
+      const Text(
+        "Choose an image from your device",
+        style: TextStyle(
+          color: lightBrown,
+          fontSize: 12,
+        ),
+      ),
+      const SizedBox(height: 4),
+      const Text(
+        "JPG, PNG or JPEG",
+        style: TextStyle(
+          color: lightBrown,
+          fontSize: 11,
+        ),
+      ),
+      const SizedBox(height: 13),
+      Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 18,
+          vertical: 10,
+        ),
+        decoration: BoxDecoration(
+          color: olive,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: const Text(
+          "Choose Image",
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    ],
+  ),
+)
+        ),
+      );
+
+      Widget actionButtons = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+TextFormField(
+  controller: projectNameController,
+  textCapitalization: TextCapitalization.words,
+  keyboardType: TextInputType.text,
+  textInputAction: TextInputAction.next,
+  style: const TextStyle(
+    color: darkBrown,
+    fontSize: 14,
+    fontWeight: FontWeight.w500,
+  ),
+  decoration: InputDecoration(
+    labelText: "Project Name",
+    hintText: "e.g. My Dream Living Room",
+    prefixIcon: const Icon(
+      Icons.drive_file_rename_outline_rounded,
+      color: olive,
+      size: 22,
+    ),
+    filled: true,
+    fillColor: cream,
+    labelStyle: const TextStyle(
+      color: lightBrown,
+      fontSize: 13,
+    ),
+    hintStyle: TextStyle(
+      color: lightBrown.withOpacity(0.65),
+      fontSize: 12,
+    ),
+    contentPadding: const EdgeInsets.symmetric(
+      horizontal: 16,
+      vertical: 18,
+    ),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide(
+        color: olive.withOpacity(0.25),
+      ),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide(
+        color: olive.withOpacity(0.3),
+        width: 1.2,
+      ),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: const BorderSide(
+        color: olive,
+        width: 1.8,
+      ),
+    ),
+    errorBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: const BorderSide(
+        color: Colors.redAccent,
+      ),
+    ),
+    focusedErrorBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: const BorderSide(
+        color: Colors.redAccent,
+        width: 1.5,
+      ),
+    ),
+  ),
+  validator: (value) {
+    if (value == null || value.trim().isEmpty) {
+      return "Please enter a project name";
+    }
+    return null;
+  },
+),
+                      const SizedBox(height: 12),
+
+          SizedBox(
+            height: 48,
+            child: ElevatedButton.icon(
+              onPressed: uploadedImageBytes == null
+                  ? null
+                  : () => addimage(),
+              icon: const Icon(
+                Icons.download_done_rounded,
+                size: 18,
+              ),
+              label: const Text("upload Image"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color.fromARGB(255, 58, 22, 22),
+                foregroundColor: Colors.white,
+                disabledBackgroundColor:
+                    const Color.fromARGB(255, 89, 105, 24).withOpacity(0.25),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
+              ),
+            ),
+          ),
+                    const SizedBox(height: 12),
+
+          SizedBox(
+            height: 48,
+            child: ElevatedButton.icon(
+              onPressed: uploadedImageBytes == null
+                  ? null
+                  : () => _analyzeimgButton(),
+              icon: const Icon(
+                Icons.visibility_outlined,
+                size: 18,
+              ),
+              label: const Text("Analyze Image"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: olive,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor:
+                    olive.withOpacity(0.25),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 48,
+            child: ElevatedButton.icon(
+              onPressed: uploadedImageBytes == null
+                  ? null
+                  : () => _modifyDesignButton(),
+              icon: const Icon(
+                Icons.auto_awesome,
+                size: 18,
+              ),
+              label: const Text("Modify Design"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: brown,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor:
+                    brown.withOpacity(0.25),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
+              ),
+            ),
+          ),
+        ],
+      );
+
+      return Container(
         width: double.infinity,
-        height: 400,
+         constraints: BoxConstraints(
+    minHeight: isMobile ? 500 : 620,
+  ),
+        padding: EdgeInsets.all(isMobile ? 14 : 22),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
-            color: olive.withOpacity(0.35),
-            width: 1.5,
+            color: olive.withOpacity(0.2),
           ),
         ),
-        child: uploadedImageBytes == null
-            ? Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "Your Room",
+              style: TextStyle(
+                color: darkBrown,
+                fontSize: isMobile ? 18 : 21,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              "Upload your room image to start creating your dream space.",
+              style: TextStyle(
+                color: lightBrown,
+                fontSize: isMobile ? 12 : 14,
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            if (isMobile) ...[
+              uploadArea,
+              const SizedBox(height: 14),
+              actionButtons,
+            ] else
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Container(
-                    width: 65,
-                    height: 65,
-                    decoration: BoxDecoration(
-                      color: cream,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.cloud_upload_outlined,
-                      color: olive,
-                      size: 32,
-                    ),
+                  Expanded(
+                    flex: 3,
+                    child: uploadArea,
                   ),
-
-                  const SizedBox(height: 18),
-
-                  const Text(
-                    "Upload Room Image",
-                    style: TextStyle(
-                      color: darkBrown,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  const Text(
-                    "Click here to choose an image",
-                    style: TextStyle(
-                      color: lightBrown,
-                      fontSize: 13,
-                    ),
-                  ),
-
-                  const SizedBox(height: 5),
-
-                  const Text(
-                    "JPG, PNG or JPEG",
-                    style: TextStyle(
-                      color: lightBrown,
-                      fontSize: 11,
-                    ),
+                  const SizedBox(width: 20),
+                  SizedBox(
+                    width: 190,
+                    child: actionButtons,
                   ),
                 ],
-              )
-            : ClipRRect(
-                borderRadius: BorderRadius.circular(22),
-                child: Stack(
-                  children: [
-                    Positioned.fill(
-                      child: Image.memory(
-                        uploadedImageBytes!,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-
-                    Positioned(
-                      top: 12,
-                      right: 12,
-                      child: GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            uploadedImageBytes = null;
-                          });
-                        },
-                        child: Container(
-                          width: 38,
-                          height: 38,
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.6),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.close,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    Positioned(
-                      bottom: 15,
-                      left: 15,
-                      right: 15,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 15,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.55),
-                          borderRadius:
-                              BorderRadius.circular(12),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(
-                              Icons.check_circle,
-                              color: Colors.white,
-                              size: 18,
-                            ),
-
-                            SizedBox(width: 8),
-
-                            Text(
-                              "Image uploaded successfully",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
               ),
+          ],
+        ),
+      );
+    },
+  );
+}
+// Small action button displayed over the image.
+Widget _imageActionButton({
+  required IconData icon,
+  required String label,
+  required VoidCallback onTap,
+}) {
+  return GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 9,
       ),
-    );
-  }
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.65),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 16),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
 
   // ============================================================
   // MODIFY DESIGN BUTTON
@@ -1053,6 +1426,48 @@ Widget _navText(
       ),
     );
   }
+  Widget _uploadtosupabase() {
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: ElevatedButton.icon(
+        onPressed: uploadedImageBytes == null
+            ? null
+            : () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      "Design customization will be available here.",
+                    ),
+                  ),
+                );
+              },
+        icon: const Icon(
+          Icons.remove_red_eye_outlined,
+          size: 19,
+        ),
+        label: const Text(
+          "analyze Image",
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: brown,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor:
+              lightBrown.withOpacity(0.25),
+          disabledForegroundColor:
+              Colors.white.withOpacity(0.7),
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+      ),
+    );
+  }
 
   // ============================================================
   // EXISTING ELEMENTS
@@ -1062,12 +1477,12 @@ Widget _existingElements() {
   final List<Map<String, dynamic>> elements = [
     {
       "name": "Sofa",
-      "image": "assets/images/sofa.png",
+      //"image": "assets/images/sofa.png",
       "icon": Icons.weekend_outlined,
     },
     {
       "name": "Table",
-      "image": "assets/images/table.png",
+      // "image": "assets/images/table.png",
       "icon": Icons.table_restaurant_outlined,
     },
     {
@@ -1178,23 +1593,23 @@ Widget _existingElements() {
                               BorderRadius.circular(8),
                           child: AspectRatio(
                             aspectRatio: 1.25,
-                            child: Image.asset(
-                              element["image"] as String,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                              errorBuilder:
-                                  (context, error, stackTrace) {
-                                return Container(
-                                  color: const Color(0xFFEDE2D3),
-                                  alignment: Alignment.center,
-                                  child: Icon(
-                                    element["icon"] as IconData,
-                                    size: 32,
-                                    color: brown,
-                                  ),
-                                );
-                              },
-                            ),
+                            // child: Image.asset(
+                            //   element["image"] as String,
+                            //   width: double.infinity,
+                            //   fit: BoxFit.cover,
+                            //   errorBuilder:
+                            //       (context, error, stackTrace) {
+                            //     return Container(
+                            //       color: const Color(0xFFEDE2D3),
+                            //       alignment: Alignment.center,
+                            //       child: Icon(
+                            //         element["icon"] as IconData,
+                            //         size: 32,
+                            //         color: brown,
+                            //       ),
+                            //     );
+                            //   },
+                            // ),
                           ),
                         ),
 
@@ -1334,44 +1749,8 @@ Widget _existingElements() {
 
             _uploadImageBox(),
 
-            const SizedBox(height: 25),
-            Container(
-               child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: SizedBox(
-          height: 530,
-          width: double.infinity,
-          child: uploadedImageBytes != null
-              ? Image.memory(
-                  uploadedImageBytes!,
-                  fit: BoxFit.cover,
-                )
-              : Image.asset(
-                  'assets/images/living_room.png',
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      color: const Color(0xFFE9DFD2),
-                      alignment: Alignment.center,
-                      child: const Icon(
-                        Icons.weekend_outlined,
-                        size: 55,
-                        color: Color(0xFF6B4325),
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ),
-            ),
-            
- const SizedBox(height: 20),
+           
 
-            _analyzeimgButton(),
-            const SizedBox(height: 20),
-
-            _modifyDesignButton(),
-            
 
             const SizedBox(height: 25),
 
@@ -1556,51 +1935,14 @@ Widget _mainContent() {
            SizedBox(
             height: 20,
           ),
-          _modifyDesignButton(),
-          SizedBox(
-            height: 14,
-          ),
-          _analyzeimgButton(),
-          SizedBox(
-            height: 10,
-          ),
+         
         ],
       ),
     ),
 
     const SizedBox(width: 18),
 
-    // RIGHT: Room Preview
-    Expanded(
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: SizedBox(
-          height: 530,
-          width: double.infinity,
-          child: uploadedImageBytes != null
-              ? Image.memory(
-                  uploadedImageBytes!,
-                  fit: BoxFit.cover,
-                )
-              : Image.asset(
-                  'assets/images/living_room.png',
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      color: const Color(0xFFE9DFD2),
-                      alignment: Alignment.center,
-                      child: const Icon(
-                        Icons.weekend_outlined,
-                        size: 55,
-                        color: Color(0xFF6B4325),
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ),
-    ),
-  ],
+     ],
 ),
               
               // EXISTING ELEMENTS
