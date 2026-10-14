@@ -1,10 +1,13 @@
 import 'dart:typed_data';
-
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:ui' as ui;
+import 'dart:async';
 
 class UplodeImg extends StatefulWidget {
   const UplodeImg({super.key});
@@ -14,6 +17,359 @@ class UplodeImg extends StatefulWidget {
 }
 
 class _UplodeImgState extends State<UplodeImg> {
+  
+Future<void> _deleteExistingObject(
+  String documentId,
+) async {
+  if (projectId == null) return;
+
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Delete object?'),
+      content: const Text(
+        'Are you sure you want to remove this object '
+        'from your existing elements?',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () =>
+              Navigator.pop(dialogContext, false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () =>
+              Navigator.pop(dialogContext, true),
+          child: const Text(
+            'Delete',
+            style: TextStyle(color: Colors.red),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  if (confirm != true) return;
+
+  try {
+    final batch = FirebaseFirestore.instance.batch();
+
+    final objectRef = FirebaseFirestore.instance
+        .collection('existingObject')
+        .doc(documentId);
+
+    final projectRef = FirebaseFirestore.instance
+        .collection('projects')
+        .doc(projectId);
+
+    batch.delete(objectRef);
+
+    batch.update(projectRef, {
+      'objectIDs': FieldValue.arrayRemove([documentId]),
+    });
+
+    await batch.commit();
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Object deleted successfully.'),
+      ),
+    );
+  } catch (e) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Failed to delete object: $e'),
+      ),
+    );
+  }
+}
+
+
+
+Future<void> _selectObject() async {
+  if (projectId == null || _samPoints.isEmpty) return;
+
+  debugPrint('========== POINT SELECTION ==========');
+  debugPrint('Image dimensions: $imageWidth x $imageHeight');
+
+  for (int i = 0; i < _samPoints.length; i++) {
+    debugPrint(
+      'Point $i: '
+      'x=${_samPoints[i].dx}, '
+      'y=${_samPoints[i].dy}, '
+      'label=${_samLabels[i]}',
+    );
+  }
+
+  setState(() {
+    isSelectingObject = true;
+    selectedObjectData = null;
+  });
+
+  try {
+    final response = await http.post(
+      Uri.parse('http://127.0.0.1:8000/select'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'projectId': projectId,
+        'pointCoords': _samPoints
+            .map((p) => [
+                  p.dx.round(),
+                  p.dy.round(),
+                ])
+            .toList(),
+        'pointLabels': _samLabels,
+      }),
+    ).timeout(const Duration(seconds: 180));
+
+    debugPrint('SAM2 status: ${response.statusCode}');
+    debugPrint('SAM2 response: ${response.body}');
+
+    final data = jsonDecode(response.body);
+
+    if (response.statusCode != 200) {
+      throw Exception(data['detail'] ?? 'SAM2 selection failed');
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      selectedObjectData = Map<String, dynamic>.from(data);
+      selectedGreenOverlay = data['greenOverlayBase64'] as String?;
+    });
+  } catch (e, stackTrace) {
+    debugPrint('SAM2 selection error: $e');
+    debugPrintStack(stackTrace: stackTrace);
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('SAM2 selection error: $e')),
+    );
+  } finally {
+    if (mounted) {
+      setState(() => isSelectingObject = false);
+    }
+  }
+}
+
+
+// The image uses BoxFit.contain, so its visible rectangle may not fill
+// the entire room-image container.
+
+Rect _imageDisplayRect(Size containerSize) {
+  if (uploadedImageBytes == null ||
+      imageWidth <= 0 ||
+      imageHeight <= 0 ||
+      containerSize.width <= 0 ||
+      containerSize.height <= 0) {
+    return Rect.zero;
+  }
+
+  final imageSize = Size(
+    imageWidth.toDouble(),
+    imageHeight.toDouble(),
+  );
+
+  final fittedSizes = applyBoxFit(
+    BoxFit.contain,
+    imageSize,
+    containerSize,
+  );
+
+  return Alignment.center.inscribe(
+    fittedSizes.destination,
+    Offset.zero & containerSize,
+  );
+}
+
+Offset _localPointToImagePixel(Offset localPoint, Size containerSize) {
+  final displayRect = _imageDisplayRect(containerSize);
+  final safeX = localPoint.dx.clamp(displayRect.left, displayRect.right);
+  final safeY = localPoint.dy.clamp(displayRect.top, displayRect.bottom);
+
+  final imageX =
+      ((safeX - displayRect.left) / displayRect.width) * imageWidth;
+  final imageY =
+      ((safeY - displayRect.top) / displayRect.height) * imageHeight;
+debugPrint('Tap local point: $localPoint');
+debugPrint('Container size: $containerSize');
+debugPrint('Image display rect: $displayRect');
+debugPrint('Image dimensions: $imageWidth x $imageHeight');
+debugPrint('Mapped image point: ($imageX, $imageY)');
+  return Offset(
+    imageX.clamp(0.0, imageWidth.toDouble()),
+    imageY.clamp(0.0, imageHeight.toDouble()),
+  );
+}
+
+
+Future<void> _finishRectangleCrop(Size containerSize) async {
+  if (_selectionStart == null ||
+      _selectionCurrent == null ||
+      uploadedImageBytes == null) {
+    return;
+  }
+
+  try {
+    // Decode the exact original image used for cropping.
+    final codec = await ui.instantiateImageCodec(
+      uploadedImageBytes!,
+    );
+    final frame = await codec.getNextFrame();
+    final sourceImage = frame.image;
+    debugPrint(
+  'Crop source dimensions: '
+  '${sourceImage.width} x ${sourceImage.height}',
+);
+debugPrint(
+  'Analyze dimensions: $imageWidth x $imageHeight',
+);
+    // Calculate where this original image is displayed.
+    final fittedSizes = applyBoxFit(
+      BoxFit.contain,
+      Size(
+        sourceImage.width.toDouble(),
+        sourceImage.height.toDouble(),
+      ),
+      containerSize,
+    );
+
+    final displayRect = Alignment.center.inscribe(
+      fittedSizes.destination,
+      Offset.zero & containerSize,
+    );
+
+    // Restrict the selection to the displayed image.
+    final selectionRect = Rect.fromPoints(
+      _selectionStart!,
+      _selectionCurrent!,
+    ).intersect(displayRect);
+    debugPrint('Selection start: $_selectionStart');
+debugPrint('Selection end: $_selectionCurrent');
+debugPrint('Display rect: $displayRect');
+debugPrint('Selection rect: $selectionRect');
+    if (selectionRect.width < 3 ||
+        selectionRect.height < 3) {
+      sourceImage.dispose();
+      setState(() {
+        _furnitureLoadingTimer?.cancel();
+        _selectionStart = null;
+        _selectionCurrent = null;
+      });
+      return;
+    }
+
+    // Convert displayed coordinates to original image pixels.
+    final left = (((selectionRect.left - displayRect.left) /
+                displayRect.width) *
+            sourceImage.width)
+        .floor()
+        .clamp(0, sourceImage.width - 1);
+
+    final top = (((selectionRect.top - displayRect.top) /
+                displayRect.height) *
+            sourceImage.height)
+        .floor()
+        .clamp(0, sourceImage.height - 1);
+
+    final right = (((selectionRect.right - displayRect.left) /
+                displayRect.width) *
+            sourceImage.width)
+        .ceil()
+        .clamp(left + 1, sourceImage.width);
+
+    final bottom = (((selectionRect.bottom - displayRect.top) /
+                displayRect.height) *
+            sourceImage.height)
+            
+        .ceil()
+        .clamp(top + 1, sourceImage.height);
+        debugPrint(
+  'Crop pixels: left=$left, top=$top, '
+  'right=$right, bottom=$bottom',
+);
+debugPrint('Crop size: ${right - left} x ${bottom - top}');
+
+    final cropWidth = right - left;
+    final cropHeight = bottom - top;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = ui.Canvas(recorder);
+
+    canvas.drawImageRect(
+      sourceImage,
+      ui.Rect.fromLTRB(
+        left.toDouble(),
+        top.toDouble(),
+        right.toDouble(),
+        bottom.toDouble(),
+      ),
+      ui.Rect.fromLTWH(
+        0,
+        0,
+        cropWidth.toDouble(),
+        cropHeight.toDouble(),
+      ),
+      ui.Paint(),
+    );
+
+    final picture = recorder.endRecording();
+    final croppedImage = await picture.toImage(
+      cropWidth,
+      cropHeight,
+    );
+
+    final byteData = await croppedImage.toByteData(
+      format: ui.ImageByteFormat.png,
+    );
+
+    sourceImage.dispose();
+    croppedImage.dispose();
+    picture.dispose();
+    codec.dispose();
+
+    if (byteData == null) {
+      throw Exception('Failed to create cropped image.');
+    }
+
+    final croppedBytes = byteData.buffer.asUint8List();
+
+    // Keep your existing selectedObjectData assignment below,
+    // using croppedBytes, left, top, cropWidth, and cropHeight.
+    setState(() {
+  selectedObjectData = {
+    'selectionMode': 'rectangleCrop',
+    'objectImageBase64': base64Encode(croppedBytes),
+    'type': 'Cropped Area',
+    'label': 'Cropped Area',
+    'x1': left,
+    'y1': top,
+    'objectWidth': cropWidth,
+    'objectHeight': cropHeight,
+    'polygons': [],
+  };
+
+  selectedX = left.toDouble();
+  selectedY = top.toDouble();
+});
+  } catch (e, stackTrace) {
+    debugPrint('Rectangle crop error: $e');
+    debugPrintStack(stackTrace: stackTrace);
+  } finally {
+    if (mounted) {
+      setState(() {
+        _selectionStart = null;
+        _selectionCurrent = null;
+      });
+    }
+  }
+}
+
   // ============================================================
   // COLORS
   // ============================================================
@@ -26,14 +382,53 @@ class _UplodeImgState extends State<UplodeImg> {
   static const Color lightBrown = Color(0xFF9A795A);
 
 // img showing variables
+bool _isRectangleCropMode = false;
+String? selectedGreenOverlay;
 String? uploadedImageUrl;
 bool isUploading = false;
 String? projectId;
+double? selectedX;
+double? selectedY;
+bool isSelectingObject = false;
+Map<String, dynamic>? selectedObjectData;
+String? selectedObjectId;
 
+List<Offset> _samPoints = [];
+List<int> _samLabels = []; // 1 = object, 0 = background
+bool _nextPointIsBackground = false;
+Timer? _furnitureLoadingTimer;
+int _furnitureIndex = 0;
+
+final List<IconData> _furnitureIcons = [
+  Icons.weekend_outlined,          // Sofa
+  Icons.bed_outlined,              // Bed
+  Icons.chair_alt_outlined,        // Chair
+  Icons.table_restaurant_outlined, // Table
+  Icons.lightbulb_outline,         // Lamp
+];
+
+final List<String> _furnitureLabels = [
+  'Finding sofas...',
+  'Detecting beds...',
+  'Scanning chairs...',
+  'Identifying tables...',
+  'Checking lighting...',
+];
+final GlobalKey _roomImageStackKey = GlobalKey();
   // ============================================================
   // VARIABLES
   // ============================================================
+bool isAnalyzing = false;
+bool isSelectionMode = false;
 
+// Temporary rectangle while the user drags over the room image.
+Offset? _selectionStart;
+Offset? _selectionCurrent;
+
+List<Map<String, dynamic>> detectedObjects = [];
+
+int imageWidth = 0;
+int imageHeight = 0;
   int selectedRoom = 0;
   int selectedBudget = 0;
   String selectedProjectType = "";
@@ -130,6 +525,211 @@ String? projectId;
     "icon": Icons.fitness_center_outlined,
   },
 ];
+Future<String> _uploadPngToSupabase({
+  required String base64Data,
+  required String fileName,
+}) async {
+  // Convert Base64 returned by FastAPI into PNG bytes.
+  final Uint8List pngBytes = base64Decode(base64Data);
+
+  final storagePath =
+      'projects/$projectId/$fileName';
+
+  await Supabase.instance.client.storage
+      .from('uploaded_images')
+      .uploadBinary(
+        storagePath,
+        pngBytes,
+        fileOptions: const FileOptions(
+          contentType: 'image/png',
+          upsert: false,
+        ),
+      );
+
+  // Return the public URL of the uploaded PNG.
+  return Supabase.instance.client.storage
+      .from('uploaded_images')
+      .getPublicUrl(storagePath);
+}
+void _stopSelection() {
+  setState(() {
+    isSelectionMode = false;
+    isSelectingObject = false;
+    selectedX = null;
+    selectedY = null;
+    selectedObjectData = null;
+    selectedObjectId = null;
+    selectedGreenOverlay = null;
+    _selectionStart = null;
+    _selectionCurrent = null;
+    _samPoints.clear();
+_samLabels.clear();
+_nextPointIsBackground = false;
+selectedGreenOverlay = null;
+  });
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('Object selection stopped.'),
+    ),
+  );
+}
+Future<void> _keepSelectedObject() async {
+  if (projectId == null || selectedObjectData == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Select an object before pressing Keep.'),
+      ),
+    );
+    return;
+  }
+
+  try {
+    final data = selectedObjectData!;
+
+    final bool isRectangleCrop =
+        data['selectionMode'] == 'rectangleCrop';
+
+    final objectBase64 = data['objectImageBase64'];
+    final maskBase64 = data['maskImageBase64'];
+
+    // The object image is required in both modes.
+    if (objectBase64 is! String || objectBase64.isEmpty) {
+      throw Exception('Object image Base64 data is missing.');
+    }
+
+    // A mask is required only for Point Selection.
+    if (!isRectangleCrop &&
+        (maskBase64 is! String || maskBase64.isEmpty)) {
+      throw Exception('Mask Base64 data is missing from /select.');
+    }
+
+    if (mounted) {
+      setState(() => isUploading = true);
+    }
+
+    // 1. Upload the object image or rectangle crop.
+    final String objectURL = await _uploadPngToSupabase(
+      base64Data: objectBase64,
+      fileName:
+          'object_${DateTime.now().microsecondsSinceEpoch}.png',
+    );
+
+    // 2. Upload a mask only for Point Selection.
+    String maskURL = '';
+
+    if (!isRectangleCrop) {
+      maskURL = await _uploadPngToSupabase(
+        base64Data: maskBase64 as String,
+        fileName:
+            'mask_${DateTime.now().microsecondsSinceEpoch}.png',
+      );
+    }
+
+    // 3. Prepare polygon data safely.
+    final dynamic rawPolygons = data['polygons'];
+    final List<Map<String, dynamic>> safePolygons = [];
+
+    if (rawPolygons is List) {
+      for (final polygon in rawPolygons) {
+        if (polygon is! List) continue;
+
+        final List<Map<String, dynamic>> points = [];
+
+        for (final point in polygon) {
+          if (point is List && point.length >= 2) {
+            points.add({
+              'x': point[0],
+              'y': point[1],
+            });
+          }
+        }
+
+        safePolygons.add({'points': points});
+      }
+    }
+
+    // 4. Save the object in Firestore.
+    final firestore = FirebaseFirestore.instance;
+
+    final objectRef = firestore
+        .collection('existingObject')
+        .doc();
+
+    final batch = firestore.batch();
+
+    batch.set(objectRef, {
+      'objectID': objectRef.id,
+      'projectID': projectId,
+      'type': data['type'] ?? data['label'] ?? 'object',
+      'objectName': data['type'] ?? data['label'] ?? 'object',
+
+      // Top-left position in the original image.
+      'x': data['x1'] ?? selectedX ?? 0,
+      'y': data['y1'] ?? selectedY ?? 0,
+
+      // Selected object's dimensions.
+      'width': data['objectWidth'] ?? data['width'] ?? 0,
+      'height': data['objectHeight'] ?? data['height'] ?? 0,
+
+      'selectionMode': isRectangleCrop
+          ? 'rectangleCrop'
+          : 'pointSelection',
+
+      'objectURL': objectURL,
+      'maskURL': maskURL,
+      'actualImgURL': uploadedImageUrl,
+      'polygons': safePolygons,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    // 5. Add the object ID to the project document.
+    batch.update(
+      firestore.collection('projects').doc(projectId),
+      {
+        'objectIDs': FieldValue.arrayUnion([objectRef.id]),
+      },
+    );
+
+    // Save both Firestore changes together.
+    await batch.commit();
+
+    debugPrint('Existing object saved: ${objectRef.id}');
+    debugPrint('Project updated: $projectId');
+    debugPrint('Selection mode: ${data['selectionMode']}');
+    debugPrint('Object URL: $objectURL');
+    debugPrint('Mask URL: $maskURL');
+
+    if (!mounted) return;
+
+    setState(() {
+      selectedObjectId = objectRef.id;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          isRectangleCrop
+              ? 'Rectangle crop saved successfully!'
+              : 'Object and mask uploaded; URLs saved successfully!',
+        ),
+      ),
+    );
+  } catch (e, stackTrace) {
+    debugPrint('Keep object error: $e');
+    debugPrintStack(stackTrace: stackTrace);
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Could not keep object: $e')),
+    );
+  } finally {
+    if (mounted) {
+      setState(() => isUploading = false);
+    }
+  }
+}
 
   // ============================================================
   // BUDGET
@@ -302,13 +902,20 @@ if (existingProject.docs.isNotEmpty) {
     }
 
     // 2. Save image URL and project details in Firestore
-    await FirebaseFirestore.instance.collection("projects").add({
-      "userId": FirebaseAuth.instance.currentUser!.uid,
-      "uploadedimg_url": imgUrl,
-      "projectName": projectNameController.text.trim(),
-      "projectType": selectedProjectType,
-      "maxBudget": maxbudget,
-    });
+    
+final projectRef = FirebaseFirestore.instance
+    .collection('projects')
+    .doc();
+
+await projectRef.set({
+  "userId": FirebaseAuth.instance.currentUser!.uid,
+  "uploadedimg_url": imgUrl,
+  "projectName": projectNameController.text.trim(),
+  "projectType": selectedProjectType,
+  "maxBudget": maxbudget,
+});
+
+projectId = projectRef.id;
 
     if (!mounted) return;
 
@@ -361,14 +968,30 @@ XFile? selectedImg;
 
     if (image == null) return;
 
-    final Uint8List bytes = await image.readAsBytes();
+    
+final Uint8List bytes = await image.readAsBytes();
 
-    if (!mounted) return;
+// Decode the original image to get its actual dimensions.
+final codec = await ui.instantiateImageCodec(bytes);
+final frame = await codec.getNextFrame();
 
-    setState(() {
-      selectedImg = image;
-      uploadedImageBytes = bytes;
-    });
+final decodedWidth = frame.image.width;
+final decodedHeight = frame.image.height;
+
+frame.image.dispose();
+codec.dispose();
+
+if (!mounted) return;
+
+setState(() {
+  selectedImg = image;
+  uploadedImageBytes = bytes;
+  imageWidth = decodedWidth;
+  imageHeight = decodedHeight;
+});
+
+debugPrint('Original image: $imageWidth x $imageHeight');
+
 
     debugPrint("Image selected: ${image.name}");
     debugPrint("Image bytes: ${bytes.length}");
@@ -384,11 +1007,206 @@ XFile? selectedImg;
 }
 
 
-  // ============================================================
-  // NAVBAR
-  // Same navbar as Login Page
-  // ============================================================
+Future<void> _saveDetectedObjects() async {
+  if (projectId == null || uploadedImageUrl == null) return;
 
+  final firestore = FirebaseFirestore.instance;
+  final List<String> savedIds = [];
+
+  try {
+    for (final detection in detectedObjects) {
+      final objectBase64 = detection['objectImageBase64'];
+      final maskBase64 = detection['maskImageBase64'];
+
+      if (objectBase64 == null || maskBase64 == null) {
+        debugPrint(
+          'Missing YOLO image or mask for ${detection['type']}',
+        );
+        continue;
+      }
+
+      final timestamp = DateTime.now().microsecondsSinceEpoch;
+
+      // Upload YOLO's correctly matched object crop.
+      final objectURL = await _uploadPngToSupabase(
+        base64Data: objectBase64.toString(),
+        fileName: 'detected_object_$timestamp.png',
+      );
+
+      // Upload the mask generated by YOLO.
+      final maskURL = await _uploadPngToSupabase(
+        base64Data: maskBase64.toString(),
+        fileName: 'detected_mask_$timestamp.png',
+      );
+
+      // YOLO segmentation is a list of [x, y] points.
+      final segmentation = detection['segmentation'] as List? ?? [];
+
+      final safePolygons = <Map<String, dynamic>>[
+        for (final point in segmentation)
+          if (point is List && point.length >= 2)
+            {
+              'x': point[0],
+              'y': point[1],
+            },
+      ];
+
+      final objectRef =
+          firestore.collection('existingObject').doc();
+
+      await objectRef.set({
+        'objectID': objectRef.id,
+        'projectID': projectId,
+        'type': detection['type'] ?? 'object',
+        'confidence': detection['confidence'] ?? 0,
+        // These are YOLO's top-left coordinates.
+        'x': detection['x'] ?? 0,
+        'y': detection['y'] ?? 0,
+        'width': detection['width'] ?? 0,
+        'height': detection['height'] ?? 0,
+        'objectURL': objectURL,
+        'maskURL': maskURL,
+        'actualImgURL': uploadedImageUrl,
+        'polygons': safePolygons,
+        'status': 'detected',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      savedIds.add(objectRef.id);
+
+      debugPrint(
+        'Saved YOLO detection: ${detection['type']}',
+      );
+    }
+
+    if (savedIds.isNotEmpty) {
+      await firestore.collection('projects').doc(projectId).update({
+        'objectIDs': FieldValue.arrayUnion(savedIds),
+      });
+    }
+
+    debugPrint('Total saved: ${savedIds.length}');
+  } catch (e, stackTrace) {
+    debugPrint('Saving detected objects failed: $e');
+    debugPrintStack(stackTrace: stackTrace);
+    rethrow;
+  }
+}
+
+
+Future<void> _runAnalyze() async {
+  debugPrint('Analyze function started');
+  debugPrint('Image URL: $uploadedImageUrl');
+  debugPrint('Project ID: $projectId');
+
+  // Keep the rest of your existing code below.
+  if (uploadedImageUrl == null || projectId == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          "Please upload and save your room image first.",
+        ),
+      ),
+    );
+    return;
+  }
+
+  setState(() {
+    isAnalyzing = true;
+    isSelectionMode = false;
+    detectedObjects = [];
+  });
+_furnitureLoadingTimer?.cancel();
+_furnitureIndex = 0;
+
+_furnitureLoadingTimer = Timer.periodic(
+  const Duration(milliseconds: 900),
+  (timer) {
+    if (!mounted || !isAnalyzing) {
+      timer.cancel();
+      return;
+    }
+
+    setState(() {
+      _furnitureIndex =
+          (_furnitureIndex + 1) % _furnitureIcons.length;
+    });
+  },
+);
+  try {
+    final response = await http
+        .post(
+          Uri.parse('http://127.0.0.1:8000/analyze'),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'projectId': projectId,
+            'imageUrl': uploadedImageUrl,
+          }),
+        )
+        .timeout(const Duration(seconds: 180));
+
+    final data = jsonDecode(response.body);
+
+    if (response.statusCode != 200) {
+      throw Exception(data['detail'] ?? 'Image analysis failed');
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      imageWidth = data['width'] as int;
+      imageHeight = data['height'] as int;
+
+      detectedObjects = List<Map<String, dynamic>>.from(
+        (data['objects'] as List).map(
+          (item) => Map<String, dynamic>.from(item),
+        ),
+      );
+
+      isSelectionMode = true;
+    });
+    debugPrint('Detected objects count: ${detectedObjects.length}');
+
+if (detectedObjects.isNotEmpty) {
+  debugPrint(
+    'First detected object: ${detectedObjects.first}',
+  );
+}
+    debugPrint('Selection mode: $isSelectionMode');
+debugPrint('Detected objects: ${detectedObjects.length}');
+await _saveDetectedObjects();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Analysis complete: ${detectedObjects.length} objects detected. Tap the image to select an object.',
+        ),
+      ),
+    );
+  } catch (e) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Analysis error: $e')),
+    );
+  } finally {
+    if (mounted) {
+      _furnitureLoadingTimer?.cancel();
+_furnitureLoadingTimer = null;
+
+if (mounted) {
+  setState(() {
+    isAnalyzing = false;
+  });
+}
+      setState(() {
+        isAnalyzing = false;
+      });
+    }
+  }
+}
   // ============================================================
   // LOGO
   // ============================================================
@@ -988,8 +1806,159 @@ Widget _uploadImageBox() {
     builder: (context, constraints) {
       final bool isMobile = constraints.maxWidth < 650;
 
+      final Size selectionContainerSize = Size(
+  constraints.maxWidth,
+  isMobile ? 300.0 : 600.0,
+);
+      debugPrint('Container size: $selectionContainerSize');
+debugPrint('Image dimensions: $imageWidth x $imageHeight');
+debugPrint(
+  'Expected display rect: '
+  '${_imageDisplayRect(selectionContainerSize)}',
+);
       Widget uploadArea = GestureDetector(
-        onTap: pickImage,
+        onTap: () {
+          if (!isSelectionMode) {
+            pickImage();
+          }
+        },
+
+        
+onPanStart: (details) {
+  if (!isSelectionMode ||
+      !_isRectangleCropMode ||
+      uploadedImageBytes == null) {
+    return;
+  }
+
+  final renderObject =
+      _roomImageStackKey.currentContext?.findRenderObject();
+
+  if (renderObject is! RenderBox) return;
+
+  final actualSize = renderObject.size;
+  final point =
+      renderObject.globalToLocal(details.globalPosition);
+
+  final displayRect = _imageDisplayRect(actualSize);
+
+  if (!displayRect.contains(point)) return;
+
+  setState(() {
+    _selectionStart = point;
+    _selectionCurrent = point;
+    selectedObjectData = null;
+    selectedGreenOverlay = null;
+  });
+},
+
+onPanUpdate: (details) {
+  if (!_isRectangleCropMode ||
+      _selectionStart == null) {
+    return;
+  }
+
+  final renderObject =
+      _roomImageStackKey.currentContext?.findRenderObject();
+
+  if (renderObject is! RenderBox) return;
+
+  final actualSize = renderObject.size;
+  final point =
+      renderObject.globalToLocal(details.globalPosition);
+
+  final displayRect = _imageDisplayRect(actualSize);
+
+  setState(() {
+    _selectionCurrent = Offset(
+      point.dx.clamp(
+        displayRect.left,
+        displayRect.right,
+      ),
+      point.dy.clamp(
+        displayRect.top,
+        displayRect.bottom,
+      ),
+    );
+  });
+},
+
+
+onPanEnd: (details) {
+  if (!_isRectangleCropMode ||
+      _selectionStart == null ||
+      _selectionCurrent == null) {
+    return;
+  }
+
+  final renderObject =
+      _roomImageStackKey.currentContext?.findRenderObject();
+
+  if (renderObject is! RenderBox) return;
+
+  // Pass the actual Stack size to the crop function.
+  _finishRectangleCrop(renderObject.size);
+},
+
+onTapDown: (details) {
+  if (_isRectangleCropMode) return;
+
+  if (!isSelectionMode ||
+      isSelectingObject ||
+      imageWidth <= 0 ||
+      imageHeight <= 0) {
+    return;
+  }
+
+  // Get the actual rendered Stack containing the room image.
+  final renderObject =
+      _roomImageStackKey.currentContext?.findRenderObject();
+
+  if (renderObject is! RenderBox) return;
+
+  // Use the actual rendered dimensions and coordinate system.
+  final actualSize = renderObject.size;
+  final localPoint =
+      renderObject.globalToLocal(details.globalPosition);
+
+  final displayRect = _imageDisplayRect(actualSize);
+
+  if (!displayRect.contains(localPoint)) return;
+
+  final pixel = _localPointToImagePixel(
+    localPoint,
+    actualSize,
+  );
+
+  debugPrint('========== TAP COORDINATES ==========');
+  debugPrint('Gesture local position: ${details.localPosition}');
+  debugPrint('Stack local position: $localPoint');
+  debugPrint('Actual Stack size: $actualSize');
+  debugPrint('Image display rect: $displayRect');
+  debugPrint('Mapped pixel: $pixel');
+  debugPrint('Image dimensions: $imageWidth x $imageHeight');
+
+  setState(() {
+    // Object Mode starts a completely new selection.
+    if (!_nextPointIsBackground) {
+      _samPoints.clear();
+      _samLabels.clear();
+
+      selectedObjectData = null;
+      selectedGreenOverlay = null;
+      selectedObjectId = null;
+      selectedX = null;
+      selectedY = null;
+    }
+
+    // Add the new object point or background point.
+    _samPoints.add(pixel);
+    _samLabels.add(_nextPointIsBackground ? 0 : 1);
+  });
+
+  _selectObject();
+},
+
         child: Container(
           width: double.infinity,
           height: isMobile ? 300 : 600,
@@ -1001,92 +1970,145 @@ Widget _uploadImageBox() {
               width: 1.4,
             ),
           ),
-          child: uploadedImageBytes != null
-    ? Image.memory(
+         
+child: Stack(
+    key: _roomImageStackKey,
+
+  fit: StackFit.expand,
+  children: [
+    if (uploadedImageBytes != null)
+      Image.memory(
         uploadedImageBytes!,
         fit: BoxFit.contain,
       )
-    : uploadedImageUrl != null
-        ? Image.network(
-            uploadedImageUrl!,
-            fit: BoxFit.contain,
-            loadingBuilder: (context, child, progress) {
-              if (progress == null) return child;
+    else if (uploadedImageUrl != null)
+      Image.network(
+        uploadedImageUrl!,
+        fit: BoxFit.contain,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return const Center(
+            child: CircularProgressIndicator(),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) {
+          return const Center(
+            child: Text("Unable to load uploaded image"),
+          );
+        },
+      )
+    else
+      const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.add_photo_alternate_outlined,
+              color: olive,
+              size: 40,
+            ),
+            SizedBox(height: 12),
+            Text("Upload Room Image"),
+            SizedBox(height: 6),
+            Text("Choose an image from your device"),
+            SizedBox(height: 4),
+            Text("JPG, PNG or JPEG"),
+          ],
+        ),
+      ),
 
-              return const Center(
-                child: CircularProgressIndicator(),
-              );
-            },
-            errorBuilder: (context, error, stackTrace) {
-              return const Center(
-                child: Text("Unable to load uploaded image"),
-              );
-            },
-          )
-        :  Center(
-  child: Column(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-      Container(
-        width: 55,
-        height: 55,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-        ),
-        child: const Icon(
-          Icons.add_photo_alternate_outlined,
-          color: olive,
-          size: 28,
-        ),
-      ),
-      const SizedBox(height: 12),
-      const Text(
-        "Upload Room Image",
-        style: TextStyle(
-          color: darkBrown,
-          fontSize: 16,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-      const SizedBox(height: 6),
-      const Text(
-        "Choose an image from your device",
-        style: TextStyle(
-          color: lightBrown,
-          fontSize: 12,
-        ),
-      ),
-      const SizedBox(height: 4),
-      const Text(
-        "JPG, PNG or JPEG",
-        style: TextStyle(
-          color: lightBrown,
-          fontSize: 11,
-        ),
-      ),
-      const SizedBox(height: 13),
-      Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 18,
-          vertical: 10,
-        ),
-        decoration: BoxDecoration(
-          color: olive,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: const Text(
-          "Choose Image",
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
+    if (selectedGreenOverlay != null)
+      Positioned.fill(
+        child: IgnorePointer(
+          child: Image.memory(
+            base64Decode(selectedGreenOverlay!),
+            fit: BoxFit.contain,
           ),
         ),
       ),
-    ],
+    if (isSelectionMode &&
+        _selectionStart != null &&
+        _selectionCurrent != null)
+      Positioned.fromRect(
+        rect: Rect.fromPoints(_selectionStart!, _selectionCurrent!),
+        child: IgnorePointer(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: olive.withOpacity(0.12),
+              border: Border.all(color: Colors.green, width: 2),
+            ),
+          ),
+        ),
+      ),
+      
+
+if (isAnalyzing)
+  Positioned.fill(
+    child: Container(
+      color: Colors.black.withOpacity(0.40),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 350),
+              transitionBuilder: (child, animation) =>
+                  ScaleTransition(
+                scale: animation,
+                child: FadeTransition(
+                  opacity: animation,
+                  child: child,
+                ),
+              ),
+              child: Icon(
+                _furnitureIcons[_furnitureIndex],
+                key: ValueKey<int>(_furnitureIndex),
+                size: 90,
+                color: const Color(0xFFF7F1E8),
+              ),
+            ),
+            const SizedBox(height: 20),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              child: Text(
+                _furnitureLabels[_furnitureIndex],
+                key: ValueKey<String>(
+                  _furnitureLabels[_furnitureIndex],
+                ),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            const SizedBox(
+              width: 150,
+              child: LinearProgressIndicator(
+                minHeight: 4,
+                backgroundColor: Color(0x66FFFFFF),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  Color(0xFFF7F1E8),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Preparing your dream space...',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
   ),
-)
+
+  ],
+),
         ),
       );
 
@@ -1196,14 +2218,28 @@ TextFormField(
           SizedBox(
             height: 48,
             child: ElevatedButton.icon(
-              onPressed: uploadedImageBytes == null
-                  ? null
-                  : () => _analyzeimgButton(),
-              icon: const Icon(
-                Icons.visibility_outlined,
-                size: 18,
-              ),
-              label: const Text("Analyze Image"),
+              onPressed: isAnalyzing
+    ? null
+    : () {
+        debugPrint("ANALYZE BUTTON CLICKED");
+        _runAnalyze();
+      },
+icon: isAnalyzing
+    ? const SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: Colors.white,
+        ),
+      )
+    : const Icon(
+        Icons.visibility_outlined,
+        size: 18,
+      ),
+label: Text(
+  isAnalyzing ? "Analyzing..." : "Analyze Image",
+),
               style: ElevatedButton.styleFrom(
                 backgroundColor: olive,
                 foregroundColor: Colors.white,
@@ -1216,6 +2252,110 @@ TextFormField(
               ),
             ),
           ),
+          
+const SizedBox(height: 12),
+if (isSelectionMode) ...[
+  const SizedBox(height: 12),
+
+ Row(
+  children: [
+    Expanded(
+      child: ElevatedButton.icon(
+        onPressed: isSelectingObject
+            ? null
+            : () {
+                setState(() {
+                  _isRectangleCropMode = false;
+                  _selectionStart = null;
+                  _selectionCurrent = null;
+                  selectedObjectData = null;
+                  selectedGreenOverlay = null;
+                });
+              },
+        icon: const Icon(Icons.ads_click),
+        label: const Text('Point Selection'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor:
+              !_isRectangleCropMode ? olive : Colors.grey,
+          foregroundColor: Colors.white,
+        ),
+      ),
+    ),
+    const SizedBox(width: 8),
+    Expanded(
+      child: ElevatedButton.icon(
+        onPressed: isSelectingObject
+            ? null
+            : () {
+                setState(() {
+                  _isRectangleCropMode = true;
+                  _samPoints.clear();
+                  _samLabels.clear();
+                  selectedObjectData = null;
+                  selectedGreenOverlay = null;
+                  selectedX = null;
+                  selectedY = null;
+                  _selectionStart = null;
+                  _selectionCurrent = null;
+                });
+              },
+        icon: const Icon(Icons.crop),
+        label: const Text('Rectangle Crop'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor:
+              _isRectangleCropMode ? olive : Colors.grey,
+          foregroundColor: Colors.white,
+        ),
+      ),
+    ),
+  ],
+),
+
+  const SizedBox(height: 8),
+  
+const Text(
+  'Tap an object to select it. Tap another object to change selection.',
+  style: TextStyle(
+    fontSize: 12,
+    color: lightBrown,
+  ),
+),
+
+],
+Row(
+  children: [
+    Expanded(
+      child: ElevatedButton.icon(
+        onPressed: isSelectionMode
+    ? _keepSelectedObject
+    : null,
+        icon: const Icon(Icons.check),
+        label: const Text('Keep'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: olive,
+          foregroundColor: Colors.white,
+        ),
+      ),
+    ),
+    const SizedBox(width: 10),
+    Expanded(
+      child: ElevatedButton.icon(
+        onPressed: isSelectionMode
+            ? _stopSelection
+            : null,
+        icon: const Icon(Icons.stop_circle_outlined),
+        label: const Text('Stop'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: brown,
+          foregroundColor: Colors.white,
+        ),
+      ),
+    ),
+  ],
+),
+
+const SizedBox(height: 12),
+
           const SizedBox(height: 12),
           SizedBox(
             height: 48,
@@ -1302,6 +2442,10 @@ TextFormField(
     },
   );
 }
+
+
+
+
 // Small action button displayed over the image.
 Widget _imageActionButton({
   required IconData icon,
@@ -1384,48 +2528,52 @@ Widget _imageActionButton({
       ),
     );
   }
- Widget _analyzeimgButton() {
-    return SizedBox(
-      width: double.infinity,
-      height: 52,
-      child: ElevatedButton.icon(
-        onPressed: uploadedImageBytes == null
-            ? null
-            : () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      "Design customization will be available here.",
-                    ),
-                  ),
-                );
-              },
-        icon: const Icon(
-          Icons.remove_red_eye_outlined,
-          size: 19,
-        ),
-        label: const Text(
-          "analyze Image",
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: brown,
-          foregroundColor: Colors.white,
-          disabledBackgroundColor:
-              lightBrown.withOpacity(0.25),
-          disabledForegroundColor:
-              Colors.white.withOpacity(0.7),
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
+
+Widget _analyzeimgButton() {
+  return SizedBox(
+    width: double.infinity,
+    height: 52,
+    child: ElevatedButton.icon(
+      onPressed:() {
+  print("ANALYZE BUTTON CLICKED");
+  debugPrint("Button callback is working!");
+
+  _runAnalyze();
+},
+      icon: isAnalyzing
+          ? const SizedBox(
+              width: 19,
+              height: 19,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : const Icon(
+              Icons.remove_red_eye_outlined,
+              size: 19,
+            ),
+      label: Text(
+        isAnalyzing ? "Analyzing..." : "Analyze Image",
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
         ),
       ),
-    );
-  }
+      style: ElevatedButton.styleFrom(
+        backgroundColor: brown,
+        foregroundColor: Colors.white,
+        disabledBackgroundColor: lightBrown.withOpacity(0.25),
+        disabledForegroundColor: Colors.white.withOpacity(0.7),
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
+      ),
+    ),
+  );
+}
+
   Widget _uploadtosupabase() {
     return SizedBox(
       width: double.infinity,
@@ -1474,38 +2622,9 @@ Widget _imageActionButton({
   // ============================================================
 
 Widget _existingElements() {
-  final List<Map<String, dynamic>> elements = [
-    {
-      "name": "Sofa",
-      //"image": "assets/images/sofa.png",
-      "icon": Icons.weekend_outlined,
-    },
-    {
-      "name": "Table",
-      // "image": "assets/images/table.png",
-      "icon": Icons.table_restaurant_outlined,
-    },
-    {
-      "name": "Plant",
-      "image": "assets/images/plant.png",
-      "icon": Icons.yard_outlined,
-    },
-    {
-      "name": "Lamp",
-      "image": "assets/images/lamp.png",
-      "icon": Icons.light_outlined,
-    },
-    {
-      "name": "Rug",
-      "image": "assets/images/rug.png",
-      "icon": Icons.texture_outlined,
-    },
-    {
-      "name": "Wall Art",
-      "image": "assets/images/wall_art.png",
-      "icon": Icons.image_outlined,
-    },
-  ];
+  if (projectId == null) {
+    return const SizedBox.shrink();
+  }
 
   return Container(
     width: double.infinity,
@@ -1520,128 +2639,173 @@ Widget _existingElements() {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // HEADER
         const Text(
-          "Existing Elements",
+          'Existing Elements',
           style: TextStyle(
             color: darkBrown,
             fontSize: 19,
             fontWeight: FontWeight.w700,
           ),
         ),
-
         const SizedBox(height: 5),
-
         const Text(
-          "These elements are detected from your room image.",
+          'Furniture detected and saved from your room image.',
           style: TextStyle(
             color: lightBrown,
             fontSize: 12,
           ),
         ),
-
         const SizedBox(height: 18),
 
-        // RESPONSIVE ELEMENT CARDS
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final double availableWidth =
-                constraints.maxWidth;
+        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection('existingObject')
+              .where('projectID', isEqualTo: projectId)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return const Text(
+                'Unable to load existing elements.',
+                style: TextStyle(color: Colors.red),
+              );
+            }
 
-            final int columns =
-                availableWidth >= 650
-                    ? 6
-                    : availableWidth >= 400
-                        ? 3
-                        : 2;
+            if (snapshot.connectionState ==
+                ConnectionState.waiting) {
+              return const Center(
+                child: CircularProgressIndicator(),
+              );
+            }
 
-            const double spacing = 10;
+            final documents = snapshot.data?.docs ?? [];
 
-            final double cardWidth =
-                (availableWidth -
-                    (spacing * (columns - 1))) /
-                columns;
-
-            return Wrap(
-              spacing: spacing,
-              runSpacing: 12,
-              children: elements.map((element) {
-                return SizedBox(
-                  width: cardWidth,
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFAF6F0),
-                      borderRadius:
-                          BorderRadius.circular(12),
-                      border: Border.all(
-                        color: lightBrown.withOpacity(0.10),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: darkBrown.withOpacity(0.025),
-                          blurRadius: 8,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        // IMAGE THUMBNAIL
-                        ClipRRect(
-                          borderRadius:
-                              BorderRadius.circular(8),
-                          child: AspectRatio(
-                            aspectRatio: 1.25,
-                            // child: Image.asset(
-                            //   element["image"] as String,
-                            //   width: double.infinity,
-                            //   fit: BoxFit.cover,
-                            //   errorBuilder:
-                            //       (context, error, stackTrace) {
-                            //     return Container(
-                            //       color: const Color(0xFFEDE2D3),
-                            //       alignment: Alignment.center,
-                            //       child: Icon(
-                            //         element["icon"] as IconData,
-                            //         size: 32,
-                            //         color: brown,
-                            //       ),
-                            //     );
-                            //   },
-                            // ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 9),
-
-                        // ELEMENT NAME
-                        Text(
-                          element["name"] as String,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: darkBrown,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-
-                        const SizedBox(height: 5),
-                      ],
+            if (documents.isEmpty) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Text(
+                    'No objects saved yet. Analyze your image '
+                    'or select an object and press Keep.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: lightBrown,
+                      fontSize: 13,
                     ),
                   ),
-                );
-              }).toList(),
-            );
+                ),
+              );
+            }
+
+            
+return SizedBox(
+  height: 175,
+  child: ListView.separated(
+    scrollDirection: Axis.horizontal,
+    itemCount: documents.length,
+    separatorBuilder: (context, index) =>
+        const SizedBox(width: 12),
+    itemBuilder: (context, index) {
+      final data = documents[index].data();
+
+      final name =
+          (data['type'] ?? 'Object').toString();
+
+      final imageUrl =
+          (data['objectURL'] ?? '').toString();
+
+     return Stack(
+  children: [
+    Container(
+      width: 130,
+      height: 175,
+      margin: const EdgeInsets.only(top: 5, right: 5),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAF6F0),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: lightBrown.withOpacity(0.15),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: imageUrl.isNotEmpty
+                  ? Image.network(
+                      imageUrl,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stack) {
+                        return const Icon(
+                          Icons.broken_image_outlined,
+                          color: lightBrown,
+                          size: 35,
+                        );
+                      },
+                    )
+                  : const Icon(
+                      Icons.chair_outlined,
+                      color: olive,
+                      size: 35,
+                    ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            name.isNotEmpty
+                ? '${name[0].toUpperCase()}${name.substring(1)}'
+                : 'Object',
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: darkBrown,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    ),
+
+    // Delete cross button
+    Positioned(
+      top: 0,
+      right: 0,
+      child: Material(
+        color: Colors.white,
+        shape: const CircleBorder(),
+        elevation: 2,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: () => _deleteExistingObject(
+            documents[index].id,
+          ),
+          child: const Padding(
+            padding: EdgeInsets.all(4),
+            child: Icon(
+              Icons.close,
+              color: Colors.red,
+              size: 16,
+            ),
+          ),
+        ),
+      ),
+    ),
+  ],
+);
+    },
+  ),
+);
+
           },
         ),
       ],
     ),
   );
 }
-
 
 
   // ============================================================

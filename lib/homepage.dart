@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:nest_craft/uploadimg.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -30,7 +31,8 @@ class _HomePageState extends State<HomePage> {
 
 final GlobalKey _howItWorksKey = GlobalKey();
 final GlobalKey _aboutKey = GlobalKey();
-
+bool _isDeletingProject = false;
+String? _deletingProjectId;
   // ============================================================
   // MY DESIGNS
   // ============================================================
@@ -1319,11 +1321,13 @@ Widget _buildDesignList() {
               final data = doc.data();
 
               return _buildDesignCard({
-                'id': doc.id,
-                'image': data['uploadedimg_url'] ?? '',
-                'title': data['projectName'] ?? 'Untitled Project',
-                'date': data['projectType'] ?? 'Room Design',
-              });
+  'id': doc.id,
+  'image': data['actualImgURL'] ??
+      data['uploadedimg_url'] ??
+      '',
+  'title': data['projectName'] ?? 'Untitled Project',
+  'date': data['projectType'] ?? 'Room Design',
+});
             }),
             _buildLetsDesignCard(),
           ],
@@ -1333,11 +1337,271 @@ Widget _buildDesignList() {
   );
 }
 
+Future<void> _confirmDeleteProject({
+  required String projectId,
+  required String projectName,
+}) async {
+  final shouldDelete = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      backgroundColor: Colors.white,
+      title: const Text(
+        'Delete Project?',
+        style: TextStyle(
+          color: darkBrown,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      content: Text(
+        'Are you sure you want to delete "$projectName"? '
+        'Its saved object metadata will also be deleted. '
+        'This action cannot be undone.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () =>
+              Navigator.pop(dialogContext, false),
+          child: const Text(
+            'Cancel',
+            style: TextStyle(color: darkBrown),
+          ),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.red.shade700,
+            foregroundColor: Colors.white,
+          ),
+          onPressed: () =>
+              Navigator.pop(dialogContext, true),
+          child: const Text('Delete'),
+        ),
+      ],
+    ),
+  );
+
+  if (shouldDelete != true || !mounted) return;
+
+  if (shouldDelete != true || !mounted) return;
+
+setState(() {
+  _isDeletingProject = true;
+  _deletingProjectId = projectId;
+});
+
+try {
+  await _deleteProject(projectId);
+} finally {
+  if (mounted) {
+    setState(() {
+      _isDeletingProject = false;
+      _deletingProjectId = null;
+    });
+  }
+}
+}
+
+String? _getSupabaseStoragePath(String? imageUrl) {
+  if (imageUrl == null || imageUrl.isEmpty) return null;
+
+  final uri = Uri.tryParse(imageUrl);
+  if (uri == null) return null;
+
+  const marker =
+      '/storage/v1/object/public/uploaded_images/';
+
+  final index = uri.path.indexOf(marker);
+  if (index == -1) return null;
+
+  return Uri.decodeComponent(
+    uri.path.substring(index + marker.length),
+  );
+}
+
+
+Future<void> _deleteProject(String projectId) async {
+  try {
+    final firestore = FirebaseFirestore.instance;
+    final projectRef = firestore.collection('projects').doc(projectId);
+
+    // 1. Read the project before deleting anything.
+    final projectSnapshot = await projectRef.get();
+
+    if (!projectSnapshot.exists) {
+      throw Exception('Project not found: $projectId');
+    }
+
+    final projectData = projectSnapshot.data()!;
+
+    // 2. Collect URLs for Supabase Storage cleanup.
+    final Set<String> imageUrls = {
+      if (projectData['actualImgURL'] is String)
+        projectData['actualImgURL'] as String,
+      if (projectData['uploadedimg_url'] is String)
+        projectData['uploadedimg_url'] as String,
+    };
+
+    // 3. Delete associated metadata from a collection.
+    Future<int> deleteObjectCollection(
+      String collectionName,
+    ) async {
+      final collection = firestore.collection(collectionName);
+
+      final Map<String, DocumentReference> refsToDelete = {};
+
+      // Find documents linked using projectID.
+      final query = await collection
+          .where('projectID', isEqualTo: projectId)
+          .get();
+
+      for (final doc in query.docs) {
+        refsToDelete[doc.id] = doc.reference;
+
+        final data = doc.data();
+
+        if (data['objectURL'] is String) {
+          imageUrls.add(data['objectURL'] as String);
+        }
+
+        if (data['maskURL'] is String) {
+          imageUrls.add(data['maskURL'] as String);
+        }
+      }
+
+      // Also check document IDs saved in projects.objectIDs.
+      final dynamic objectIds = projectData['objectIDs'];
+
+      if (objectIds is List) {
+        for (final id in objectIds) {
+          if (id is! String || id.isEmpty) continue;
+
+          final doc = await collection.doc(id).get();
+
+          if (doc.exists) {
+            refsToDelete[doc.id] = doc.reference;
+
+            final data = doc.data();
+
+            if (data?['objectURL'] is String) {
+              imageUrls.add(data!['objectURL'] as String);
+            }
+
+            if (data?['maskURL'] is String) {
+              imageUrls.add(data!['maskURL'] as String);
+            }
+          }
+        }
+      }
+
+      // Delete in batches of at most 450 documents.
+      final refs = refsToDelete.values.toList();
+
+      for (var i = 0; i < refs.length; i += 450) {
+        final end = (i + 450 < refs.length)
+            ? i + 450
+            : refs.length;
+
+        final batch = firestore.batch();
+
+        for (final ref in refs.sublist(i, end)) {
+          batch.delete(ref);
+        }
+
+        await batch.commit();
+      }
+
+      debugPrint(
+        '$collectionName: deleted ${refs.length} documents '
+        'for project $projectId',
+      );
+
+      return refs.length;
+    }
+
+    // 4. Clean existingObject.
+    final existingDeleted =
+        await deleteObjectCollection('existingObject');
+
+    // 5. Clean the AI object collection.
+    // Your Firebase screenshot shows "aiObject".
+    final aiObjectDeleted =
+        await deleteObjectCollection('aiObject');
+
+    // If you ALSO have a separate collection named "AIObjects",
+    // uncomment these two lines:
+    //
+    // final aiObjectsDeleted =
+    //     await deleteObjectCollection('AIObjects');
+    //
+    // debugPrint('AIObjects deleted: $aiObjectsDeleted');
+
+    debugPrint('existingObject deleted: $existingDeleted');
+    debugPrint('aiObject deleted: $aiObjectDeleted');
+
+    // 6. Delete the project only after metadata cleanup succeeds.
+    await projectRef.delete();
+
+    debugPrint('Project deleted: $projectId');
+
+    // 7. Remove associated images from Supabase Storage.
+    bool storageCleanupFailed = false;
+
+    try {
+      final storagePaths = imageUrls
+          .map(_getSupabaseStoragePath)
+          .whereType<String>()
+          .toSet()
+          .toList();
+
+      if (storagePaths.isNotEmpty) {
+        await Supabase.instance.client.storage
+            .from('uploaded_images')
+            .remove(storagePaths);
+      }
+
+      debugPrint(
+        'Supabase storage paths processed: ${storagePaths.length}',
+      );
+    } catch (storageError, stackTrace) {
+      storageCleanupFailed = true;
+
+      debugPrint('Supabase cleanup error: $storageError');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+
+    // 8. Show the result.
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          storageCleanupFailed
+              ? 'Project and object metadata deleted, but some images may remain.'
+              : 'Project and associated objects deleted successfully.',
+        ),
+      ),
+    );
+  } catch (e, stackTrace) {
+    debugPrint('Delete project error: $e');
+    debugPrintStack(stackTrace: stackTrace);
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Failed to delete project: $e'),
+      ),
+    );
+  }
+}
+
+
+
   // ============================================================
   // USER DESIGN CARD
   // ============================================================
 
-  Widget _buildDesignCard(Map<String, String> design) {
+  
+Widget _buildDesignCard(Map<String, String> design) {
   return GestureDetector(
     onTap: () {
       final imageUrl = design['image'] ?? '';
@@ -1345,7 +1609,7 @@ Widget _buildDesignList() {
       if (imageUrl.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("No image URL found for this project"),
+            content: Text('No image URL found for this project'),
           ),
         );
         return;
@@ -1368,51 +1632,91 @@ Widget _buildDesignList() {
         color: Colors.white,
         borderRadius: BorderRadius.circular(15),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
         children: [
-          ClipRRect(
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(15),
-            ),
-            child: Image.network(
-              design['image'] ?? '',
-              height: 145,
-              width: double.infinity,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(15),
+                ),
+                child: Image.network(
+                  design['image'] ?? '',
                   height: 145,
-                  color: Colors.grey[300],
-                  child: const Center(
-                    child: Icon(Icons.image_not_supported),
-                  ),
-                );
-              },
-            ),
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      height: 145,
+                      color: Colors.grey[300],
+                      child: const Center(
+                        child: Icon(Icons.image_not_supported),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      design['title'] ?? 'Untitled Project',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      design['date'] ?? 'Room Design',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  design['title'] ?? 'Untitled Project',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  design['date'] ?? 'Room Design',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey,
-                  ),
-                ),
-              ],
+
+          // Delete button
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Material(
+              color: Colors.white.withOpacity(0.95),
+              shape: const CircleBorder(),
+              elevation: 2,
+              child: IconButton(
+  tooltip: 'Delete project',
+  onPressed: _isDeletingProject
+      ? null
+      : () {
+          _confirmDeleteProject(
+            projectId: design['id'] ?? '',
+            projectName:
+                design['title'] ?? 'Untitled Project',
+          );
+        },
+  icon: _deletingProjectId == design['id']
+      ? const SizedBox(
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(
+            strokeWidth: 2.5,
+            color: Color(0xFF6B4528),
+          ),
+        )
+      : const Icon(
+          Icons.delete_outline_rounded,
+          color: Colors.red,
+        ),
+),
             ),
           ),
         ],
@@ -1420,6 +1724,8 @@ Widget _buildDesignList() {
     ),
   );
 }
+
+ 
   // ============================================================
   // LET'S DESIGN NEW
   // ============================================================
