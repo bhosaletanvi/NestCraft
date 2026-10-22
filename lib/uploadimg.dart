@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:nest_craft/redesign_page.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:ui' as ui;
 import 'dart:async';
@@ -2354,32 +2355,38 @@ Row(
   ],
 ),
 
+
 const SizedBox(height: 12),
 
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 48,
-            child: ElevatedButton.icon(
-              onPressed: uploadedImageBytes == null
-                  ? null
-                  : () => _modifyDesignButton(),
-              icon: const Icon(
-                Icons.auto_awesome,
-                size: 18,
-              ),
-              label: const Text("Modify Design"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: brown,
-                foregroundColor: Colors.white,
-                disabledBackgroundColor:
-                    brown.withOpacity(0.25),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 0,
-              ),
-            ),
+SizedBox(
+  height: 48,
+  child: ElevatedButton.icon(
+    onPressed: () {
+      debugPrint('Modify Design clicked');
+
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => RedesignPage(
+            originalImageBytes: uploadedImageBytes!,
           ),
+        ),
+      );
+    },
+    icon: const Icon(
+      Icons.auto_awesome,
+      size: 18,
+    ),
+    label: const Text('Modify Design'),
+    style: ElevatedButton.styleFrom(
+      backgroundColor: brown,
+      foregroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+    ),
+  ),
+),
+
         ],
       );
 
@@ -2486,48 +2493,33 @@ Widget _imageActionButton({
   // MODIFY DESIGN BUTTON
   // ============================================================
 
-  Widget _modifyDesignButton() {
-    return SizedBox(
-      width: double.infinity,
-      height: 52,
-      child: ElevatedButton.icon(
-        onPressed: uploadedImageBytes == null
-            ? null
-            : () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      "Design customization will be available here.",
-                    ),
-                  ),
-                );
-              },
-        icon: const Icon(
-          Icons.auto_awesome,
-          size: 19,
-        ),
-        label: const Text(
-          "Modify Design",
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
+ Widget _modifyDesignButton() {
+  return SizedBox(
+    width: double.infinity,
+    height: 52,
+    child: ElevatedButton.icon(
+      onPressed: () {
+        debugPrint('MODIFY DESIGN CLICKED');
+
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => RedesignPage(
+              originalImageBytes: uploadedImageBytes ??
+                  Uint8List(0),
+            ),
           ),
-        ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: brown,
-          foregroundColor: Colors.white,
-          disabledBackgroundColor:
-              lightBrown.withOpacity(0.25),
-          disabledForegroundColor:
-              Colors.white.withOpacity(0.7),
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-        ),
+        );
+      },
+      icon: const Icon(Icons.auto_awesome, size: 19),
+      label: const Text('Modify Design'),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: brown,
+        foregroundColor: Colors.white,
       ),
-    );
-  }
+    ),
+  );
+}
 
 Widget _analyzeimgButton() {
   return SizedBox(
