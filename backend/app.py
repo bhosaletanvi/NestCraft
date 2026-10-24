@@ -12,8 +12,12 @@ import base64
 import cv2
 import numpy as np
 import requests
+import os
+from dotenv import load_dotenv
 import torch
 
+load_dotenv()
+API_KEY = os.getenv("SERPAPI_KEY")
 
 
 app = FastAPI(title="NestCraft Object Detection API")
@@ -43,6 +47,11 @@ active_image = None
 class AnalyzeRequest(BaseModel):
     projectId: str
     imageUrl: HttpUrl
+
+class ProductRequest(BaseModel):
+    object_type: str
+    color: str = ""
+    budget: int = 50000
 
 
 
@@ -439,3 +448,94 @@ def select_object(request: SelectRequest):
             status_code=500,
             detail=f"SAM2 selection failed: {error}",
         )
+
+@app.post("/recommend")
+def recommend(data: ProductRequest):
+    if not API_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="SERPAPI_KEY is missing",
+        )
+
+    query = f"{data.color} {data.object_type}".strip()
+
+    try:
+        response = requests.get(
+            "https://serpapi.com/search.json",
+            params={
+                "engine": "google_shopping",
+                "q": query,
+                "gl": "in",
+                "hl": "en",
+                "api_key": API_KEY,
+            },
+            timeout=60,
+        )
+
+        # Log provider errors for debugging.
+        if response.status_code != 200:
+            print("SerpApi HTTP status:", response.status_code)
+            print("SerpApi response:", response.text[:1000])
+
+            raise HTTPException(
+                status_code=502,
+                detail="Shopping provider returned an error",
+            )
+
+        result = response.json()
+
+        print("SerpApi result keys:", result.keys())
+        print("SerpApi error:", result.get("error"))
+        print(
+            "Shopping results count:",
+            len(result.get("shopping_results", [])),
+        )
+
+        if result.get("error"):
+            print("SerpApi reported an error:", result["error"])
+
+    except requests.RequestException as e:
+        print("Shopping request error:", str(e))
+        raise HTTPException(
+            status_code=502,
+            detail="Shopping search request failed",
+        ) from e
+
+    products = []
+
+    for item in result.get("shopping_results", []):
+        raw_price = item.get("price", "")
+
+        # Convert a price like "₹17,267" into a number.
+        if isinstance(raw_price, (int, float)):
+            price_value = float(raw_price)
+        else:
+            price_text = str(raw_price)
+            digits = "".join(
+                ch for ch in price_text
+                if ch.isdigit() or ch == "."
+            )
+
+            try:
+                price_value = float(digits) if digits else None
+            except ValueError:
+                price_value = None
+
+        # Keep only products with a known price within budget.
+        if price_value is None or price_value > data.budget:
+            continue
+
+        products.append({
+            "name": item.get("title", "Product"),
+            "price": raw_price,
+            "store": item.get("source", "Online store"),
+            "imageUrl": item.get("thumbnail", ""),
+            "productUrl": item.get("product_link", ""),
+        })
+
+    return {
+        "query": query,
+        "budget": data.budget,
+        "count": len(products),
+        "products": products,
+    }
