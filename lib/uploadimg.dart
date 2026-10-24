@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:ui' as ui;
 import 'dart:async';
+import 'services/shopping_service.dart';
 
 class UplodeImg extends StatefulWidget {
   const UplodeImg({super.key});
@@ -426,6 +428,12 @@ Offset? _selectionStart;
 Offset? _selectionCurrent;
 
 List<Map<String, dynamic>> detectedObjects = [];
+
+// Shopping recommendations returned by FastAPI /recommend.
+List<Map<String, dynamic>> shoppingProducts = [];
+bool isLoadingShoppingProducts = false;
+String? shoppingError;
+String? shoppingObjectType;
 
 int imageWidth = 0;
 int imageHeight = 0;
@@ -2618,6 +2626,213 @@ Widget _analyzeimgButton() {
   }
 
   // ============================================================
+  // SHOPPING API
+  // ============================================================
+
+  Future<void> _findProductAlternatives(String objectType) async {
+    final normalizedType = objectType.trim().isEmpty ? 'furniture' : objectType.trim();
+    if (!mounted) return;
+
+    setState(() {
+      isLoadingShoppingProducts = true;
+      shoppingError = null;
+      shoppingProducts = [];
+      shoppingObjectType = normalizedType;
+    });
+
+    try {
+      final products = await ShoppingService.recommendProducts(
+        objectType: normalizedType,
+        color: '',
+        budget: maxbudget > 0 ? maxbudget : 10000,
+      ).timeout(const Duration(seconds: 45));
+
+      if (!mounted) return;
+      setState(() {
+        shoppingProducts = products;
+        if (products.isEmpty) {
+          shoppingError = 'No product recommendations found. Try another object.';
+        }
+      });
+    } catch (e, stackTrace) {
+      debugPrint('Shopping recommendation error: $e');
+      debugPrintStack(stackTrace: stackTrace);
+      if (!mounted) return;
+      setState(() {
+        shoppingError = 'Could not load products. Check that the shopping API server is running.';
+      });
+    } finally {
+      if (mounted) setState(() => isLoadingShoppingProducts = false);
+    }
+  }
+
+  String _productField(Map<String, dynamic> product, List<String> keys) {
+    for (final key in keys) {
+      final value = product[key];
+      if (value != null && value.toString().trim().isNotEmpty) {
+        return value.toString().trim();
+      }
+    }
+    return '';
+  }
+
+  Widget _shoppingRecommendations() {
+    if (shoppingObjectType == null) return const SizedBox.shrink();
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 18),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: lightCream,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: olive.withOpacity(0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Shopping alternatives for ${shoppingObjectType!}',
+            style: const TextStyle(color: darkBrown, fontSize: 17, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 12),
+          if (isLoadingShoppingProducts)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Column(
+                  children: [
+                    CircularProgressIndicator(color: olive),
+                    SizedBox(height: 10),
+                    Text('Finding products and prices...'),
+                  ],
+                ),
+              ),
+            )
+          else if (shoppingError != null)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(shoppingError!, style: const TextStyle(color: Colors.redAccent)),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: () => _findProductAlternatives(shoppingObjectType!),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Try again'),
+                ),
+              ],
+            )
+          else if (shoppingProducts.isNotEmpty)
+            SizedBox(
+              height: 275,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: shoppingProducts.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 12),
+                itemBuilder: (context, index) {
+                  final product = shoppingProducts[index];
+                  final title = _productField(product, ['title', 'name', 'product_name']);
+                  final price = _productField(product, ['price', 'extracted_price', 'displayed_price']);
+                  final store = _productField(product, ['source', 'store', 'merchant']);
+                  final image = _productField(product, ['thumbnail', 'image', 'image_url', 'thumbnail_url']);
+                  final link = _productField(product, ['product_link', 'link', 'url']);
+
+                  return Container(
+                    width: 185,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: lightBrown.withOpacity(0.2)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: image.isNotEmpty
+                                ? Image.network(
+                                    image,
+                                    width: double.infinity,
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (_, __, ___) => const Center(
+                                      child: Icon(Icons.image_not_supported_outlined, size: 35, color: lightBrown),
+                                    ),
+                                  )
+                                : const Center(child: Icon(Icons.chair_outlined, size: 35, color: olive)),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          title.isEmpty ? 'Furniture product' : title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: darkBrown, fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          price.isEmpty ? 'Price unavailable' : price,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: olive, fontSize: 14, fontWeight: FontWeight.w700),
+                        ),
+                        if (store.isNotEmpty)
+                          Text(store, maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: lightBrown, fontSize: 11)),
+                        const SizedBox(height: 6),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton(
+                            onPressed: link.isEmpty
+                                ? null
+                                : () => _showProductLink(link),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: brown,
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            child: const Text('View Product', style: TextStyle(fontSize: 11)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showProductLink(String link) async {
+    final uri = Uri.tryParse(link);
+    if (uri == null || (uri.scheme != 'https' && uri.scheme != 'http')) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This product link is invalid.')),
+      );
+      return;
+    }
+
+    try {
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open the product link.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open product: $e')),
+      );
+    }
+  }
+
+
+  // ============================================================
   // EXISTING ELEMENTS
   // ============================================================
 
@@ -2698,7 +2913,7 @@ Widget _existingElements() {
 
             
 return SizedBox(
-  height: 175,
+  height: 210,
   child: ListView.separated(
     scrollDirection: Axis.horizontal,
     itemCount: documents.length,
@@ -2717,7 +2932,7 @@ return SizedBox(
   children: [
     Container(
       width: 130,
-      height: 175,
+      height: 205,
       margin: const EdgeInsets.only(top: 5, right: 5),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
@@ -2766,6 +2981,22 @@ return SizedBox(
               fontWeight: FontWeight.w600,
             ),
           ),
+          const SizedBox(height: 5),
+          SizedBox(
+            width: double.infinity,
+            height: 28,
+            child: ElevatedButton(
+              onPressed: isLoadingShoppingProducts ? null : () => _findProductAlternatives(name),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: olive,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                visualDensity: VisualDensity.compact,
+                textStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+              ),
+              child: const Text('Find Products'),
+            ),
+          ),
         ],
       ),
     ),
@@ -2802,6 +3033,7 @@ return SizedBox(
 
           },
         ),
+        _shoppingRecommendations(),
       ],
     ),
   );
