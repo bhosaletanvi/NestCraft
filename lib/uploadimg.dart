@@ -2370,16 +2370,29 @@ SizedBox(
   height: 48,
   child: ElevatedButton.icon(
     onPressed: () {
-      debugPrint('Modify Design clicked');
-
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => RedesignPage(
-            originalImageBytes: uploadedImageBytes!,
-          ),
+  if (uploadedImageBytes == null ||
+      uploadedImageBytes!.isEmpty ||
+      projectId == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Please upload and save your room image first.',
         ),
-      );
-    },
+      ),
+    );
+    return;
+  }
+
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => RedesignPage(
+        originalImageBytes: uploadedImageBytes!,
+        projectId: projectId!,
+      ),
+    ),
+  );
+},
     icon: const Icon(
       Icons.auto_awesome,
       size: 18,
@@ -2507,18 +2520,29 @@ Widget _imageActionButton({
     height: 52,
     child: ElevatedButton.icon(
       onPressed: () {
-        debugPrint('MODIFY DESIGN CLICKED');
+  if (uploadedImageBytes == null ||
+      uploadedImageBytes!.isEmpty ||
+      projectId == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Please upload and save your room image first.',
+        ),
+      ),
+    );
+    return;
+  }
 
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => RedesignPage(
-              originalImageBytes: uploadedImageBytes ??
-                  Uint8List(0),
-            ),
-          ),
-        );
-      },
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => RedesignPage(
+        originalImageBytes: uploadedImageBytes!,
+        projectId: projectId!,
+      ),
+    ),
+  );
+},
       icon: const Icon(Icons.auto_awesome, size: 19),
       label: const Text('Modify Design'),
       style: ElevatedButton.styleFrom(
