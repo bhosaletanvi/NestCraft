@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:nest_craft/LandingPage.dart';
 
 import 'package:nest_craft/firebase_options.dart';
-import 'package:nest_craft/redesign_test_page.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 void main() async{
   await Supabase.initialize(
