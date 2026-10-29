@@ -5,8 +5,7 @@ import 'package:http/http.dart' as http;
 class RedesignService {
   // Replace this with your computer's IPv4 address.
   // Example: http://192.168.1.5:8000
-  static const String baseUrl = 'http://10.212.159.80:8002';
-
+static const String baseUrl = 'http://127.0.0.1:8002';
   static Future<Uint8List> redesignRoom({
     required Uint8List imageBytes,
     required String fileName,
