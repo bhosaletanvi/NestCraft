@@ -2282,7 +2282,7 @@ if (isSelectionMode) ...[
                 });
               },
         icon: const Icon(Icons.ads_click),
-        label: const Text('Point Selection'),
+        label: const Text('Point'),
         style: ElevatedButton.styleFrom(
           backgroundColor:
               !_isRectangleCropMode ? olive : Colors.grey,
@@ -2309,7 +2309,7 @@ if (isSelectionMode) ...[
                 });
               },
         icon: const Icon(Icons.crop),
-        label: const Text('Rectangle Crop'),
+        label: const Text('Crop'),
         style: ElevatedButton.styleFrom(
           backgroundColor:
               _isRectangleCropMode ? olive : Colors.grey,

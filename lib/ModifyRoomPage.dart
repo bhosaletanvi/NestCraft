@@ -1,3 +1,5 @@
+import 'package:nest_craft/shopping_page.dart';
+
 import 'LandingPage.dart';
 import 'LoginPage.dart';
 import 'dart:typed_data';
@@ -2255,7 +2257,7 @@ Widget _buildQuickActions() {
           width: double.infinity,
           child: OutlinedButton.icon(
             onPressed: () {
-              debugPrint('Search on Web button clicked');
+              Navigator.push(context, MaterialPageRoute(builder: (_)=>ShoppingPage()));
             },
             icon: const Icon(Icons.travel_explore),
             label: const Text(

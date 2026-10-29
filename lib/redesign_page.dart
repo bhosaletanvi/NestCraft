@@ -4,8 +4,10 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:nest_craft/ModifyRoomPage.dart';
 import 'package:nest_craft/services/redesign_service.dart';
 import 'package:nest_craft/shopping_page.dart';
+import 'package:file_saver/file_saver.dart';
 
 class RedesignPage extends StatefulWidget {
   final Uint8List originalImageBytes;
@@ -33,7 +35,7 @@ class _RedesignPageState extends State<RedesignPage> {
   final GlobalKey _howItWorksKey = GlobalKey();
   final GlobalKey _aboutKey = GlobalKey();
   bool _showMobileNav = false;
-
+  bool hasDownloadedImage = false;
   void _scrollToHome() {
     if (!_scrollController.hasClients) return;
 
@@ -64,7 +66,45 @@ class _RedesignPageState extends State<RedesignPage> {
       );
     });
   }
+Future<void> _saveRedesignedImage() async {
+  final imageBytes = redesignedImageBytes;
 
+  if (imageBytes == null || imageBytes.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Please generate a redesign first.'),
+      ),
+    );
+    return;
+  }
+
+  try {
+    await FileSaver.instance.saveFile(
+      name: 'nestcraft_redesign',
+      bytes: imageBytes,
+      fileExtension: 'png',
+      mimeType: MimeType.png,
+    );
+
+    if (!mounted) return;
+    setState(() {
+  hasDownloadedImage = true;
+});
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Your redesigned image is ready to save.'),
+      ),
+    );
+  } catch (e) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Unable to save image: $e'),
+      ),
+    );
+  }
+}
   Widget _logo({required double width, required double height}) {
     return SizedBox(
       width: width,
@@ -424,6 +464,8 @@ Future<String> _fetchExistingObjects() async {
       isGenerating = true;
       errorMessage = '';
       showComparison = false;
+        hasDownloadedImage = false;
+
     });
 
     try {
@@ -1253,53 +1295,67 @@ Widget _howItWorksSection() {
   }
 
  
-  Widget _buildGenerateButton() {
-    return SizedBox(
-      height: 54,
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: isGenerating ? null : generateRedesign,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: brown,
-          foregroundColor: Colors.white,
-          disabledBackgroundColor: brown.withValues(alpha: 0.55),
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
+Widget _buildGenerateButton() {
+  return SizedBox(
+    width: double.infinity,
+    child: ElevatedButton(
+      onPressed: isGenerating ? null : generateRedesign,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: brown,
+        foregroundColor: Colors.white,
+        disabledBackgroundColor:
+            brown.withValues(alpha: 0.55),
+        elevation: 0,
+        minimumSize: const Size(0, 54),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 14,
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (isGenerating)
-              const SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 2,
-                ),
-              )
-            else
-              const Icon(Icons.auto_awesome, size: 20),
-            const SizedBox(width: 10),
-            Text(
+        tapTargetSize: MaterialTapTargetSize.padded,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (isGenerating)
+            const SizedBox(
+              height: 18,
+              width: 18,
+              child: CircularProgressIndicator(
+                color: Colors.white,
+                strokeWidth: 2,
+              ),
+            )
+          else
+            const Icon(
+              Icons.auto_awesome,
+              size: 19,
+            ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
               isGenerating
                   ? 'Creating Your Design...'
                   : redesignedImageBytes == null
                       ? 'Generate Redesign'
                       : 'Generate New Design',
+              textAlign: TextAlign.center,
+              softWrap: true,
               style: const TextStyle(
                 fontWeight: FontWeight.w700,
-                fontSize: 15,
+                fontSize: 14,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 
+ 
   Widget _buildError() {
     if (errorMessage.isEmpty) return const SizedBox.shrink();
 
@@ -1421,20 +1477,65 @@ Widget _howItWorksSection() {
   const SizedBox(height: 12),
   SizedBox(
     width: double.infinity,
-    child: OutlinedButton.icon(
-      onPressed: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const ShoppingPage(),
-          ),
-        );
-      },
-      icon: const Icon(Icons.shopping_bag_outlined),
-      label: const Text('Find Objects on Web'),
+    child: 
+OutlinedButton.icon(
+  onPressed: hasDownloadedImage
+      ? () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const ModifyRoomPage(),
+            ),
+          );
+        }
+      : null,
+  icon: Icon(
+    hasDownloadedImage
+        ? Icons.shopping_bag_outlined
+        : Icons.lock_outline,
+  ),
+  label: Text(
+    hasDownloadedImage
+        ? 'Find Alternatives'
+        : 'Save Image to Unlock Alternatives',
+  ),
+  style: OutlinedButton.styleFrom(
+    foregroundColor: brown,
+    disabledForegroundColor: mutedText,
+    side: BorderSide(
+      color: hasDownloadedImage
+          ? brown
+          : mutedText,
+    ),
+    padding: const EdgeInsets.symmetric(
+      vertical: 14,
     ),
   ),
+),
+
+  ),
 ],
+if (redesignedImageBytes != null) ...[
+  const SizedBox(height: 16),
+  SizedBox(
+    width: double.infinity,
+    child: ElevatedButton.icon(
+      onPressed: _saveRedesignedImage,
+      icon: const Icon(Icons.download_rounded),
+      label: const Text('Save Image'),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: brown,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(
+          vertical: 15,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    ),
+  ),
+]
       ],
     );
   }
@@ -1509,7 +1610,7 @@ Widget _howItWorksSection() {
           const SizedBox(height: 18),
           _buildGenerateButton(),
           _buildError(),
-          if (isGenerating) _buildLoadingPanel(),
+         
           if (redesignedImageBytes != null) ...[
             const SizedBox(height: 20),
             OutlinedButton.icon(
@@ -1601,7 +1702,7 @@ Widget _buildHeroSection() {
         borderRadius: BorderRadius.circular(25),
         image: const DecorationImage(
           image: NetworkImage(
-           'https://images.livspace-cdn.com/w:1440/dpr:3/plain/https://d3gq2merok8n5r.cloudfront.net/abhinav/ond-1634120396-Obfdc/jas-1657179080-NnXAg/living-room-1657190512-fE8h4/0-livingg-1-1664368736-qq8C5.jpg-',
+           'https://images.livspace-cdn.com/w:2048/plain/https://d3gq2merok8n5r.cloudfront.net/reno-lp-1662986043-otDV1/banner-1662986054-mF7RH/web-1440x730-1662986090-D7W4o.png',
           ),
           fit: BoxFit.cover,
         ),
