@@ -18,6 +18,7 @@ import 'package:image_picker/image_picker.dart';
 
 const String laptopIp = '10.42.229.130';
 
+
 String get apiBaseUrl {
   if (kIsWeb) {
     return 'http://127.0.0.1:8000';
@@ -77,7 +78,10 @@ class _ModifyRoomPageState extends State<ModifyRoomPage> {
   final Map<int, Offset> originalFurniturePositions = {};
 
   bool showObjectTools = false;
+bool _showMobileNav = false;
 
+final GlobalKey _howItWorksKey = GlobalKey();
+final GlobalKey _aboutKey = GlobalKey();
   List<Map<String, dynamic>> alternatives = [];
 
   bool isLoadingAlternatives = true;
@@ -971,8 +975,9 @@ void restoreOriginalFurniture() {
     }
   }
 
-  
- 
+
+@override
+
 @override
 Widget build(BuildContext context) {
   return Scaffold(
@@ -980,11 +985,12 @@ Widget build(BuildContext context) {
     body: SafeArea(
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final desktop = constraints.maxWidth >= 900;
+          final desktop = constraints.maxWidth >= 800;
 
           return Column(
             children: [
-              _buildHeader(desktop),
+              desktop ? _navbar() : _mobileNavbar(),
+
               Expanded(
                 child: SingleChildScrollView(
                   padding: EdgeInsets.symmetric(
@@ -1012,16 +1018,17 @@ Widget build(BuildContext context) {
                             ),
                             const SizedBox(width: 24),
                             Expanded(
-  flex: 3,
-  child: Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      _buildQuickActions(),
-      const SizedBox(height: 14),
-      _buildRoomDesignTips(),
-    ],
-  ),
-),
+                              flex: 3,
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.stretch,
+                                children: [
+                                  _buildQuickActions(),
+                                  const SizedBox(height: 14),
+                                  _buildRoomDesignTips(),
+                                ],
+                              ),
+                            ),
                           ],
                         )
                       else
@@ -1036,6 +1043,16 @@ Widget build(BuildContext context) {
                             _buildRoomDesignTips(),
                           ],
                         ),
+
+                      const SizedBox(height: 35),
+
+                      _buildHowItWorksSection(),
+
+                      const SizedBox(height: 35),
+
+                      _aboutSection(),
+
+                      const SizedBox(height: 35),
                     ],
                   ),
                 ),
@@ -1048,131 +1065,632 @@ Widget build(BuildContext context) {
   );
 }
 
-Widget _buildHeader(bool desktop) {
+// HOW IT WORKS SECTION
+Widget _buildHowItWorksSection() {
+  final steps = [
+    {
+      'icon': Icons.add_photo_alternate_outlined,
+      'number': '01',
+      'title': 'Upload Your Space',
+      'description':
+          'Start by uploading a photo of your room. It can be your living room, bedroom, kitchen, or any space you want to redesign.',
+    },
+    {
+      'icon': Icons.auto_awesome,
+      'number': '02',
+      'title': 'Get Design Ideas',
+      'description':
+          'NestCraft analyzes your room and provides creative interior ideas that match your space and preferences.',
+    },
+    {
+      'icon': Icons.tune,
+      'number': '03',
+      'title': 'Personalize Everything',
+      'description':
+          'Change furniture, colors and decorations. Move objects around and experiment until the room feels right.',
+    },
+    {
+      'icon': Icons.shopping_bag_outlined,
+      'number': '04',
+      'title': 'Explore Alternatives',
+      'description':
+          'Discover alternative furniture and decor options with prices so you can find choices that fit your style and budget.',
+    },
+    {
+      'icon': Icons.home_outlined,
+      'number': '05',
+      'title': 'Transform Your Space',
+      'description':
+          "Save your final design and turn your vision into a beautiful, personalized space you'll love.",
+    },
+  ];
+
   return Container(
+    key: _howItWorksKey,
+    width: double.infinity,
     padding: EdgeInsets.symmetric(
-      horizontal: desktop ? 30 : 16,
-      vertical: 10,
+      horizontal:  desktopPadding(context),
+      vertical: 55,
     ),
+    decoration: const BoxDecoration(
+      color: Color(0xFFF8F5EF),
+    ),
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final isDesktop = constraints.maxWidth >= 900;
+
+        return Column(
+          children: [
+            const Text(
+              'H O W   I T   W O R K S',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 2,
+                color: Color(0xFF514E25),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+Text(
+  'From Empty Space\nTo Your Dream Space',
+  textAlign: TextAlign.center,
+  style: TextStyle(
+    fontSize: isDesktop ? 48 : 34,
+    height: 1.12,
+    fontWeight: FontWeight.w600,
+    color: const Color(0xFF514E25),
+  ),
+),
+
+            const SizedBox(height: 24),
+
+            ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: 800,
+              ),
+              child: const Text(
+                'A simple design journey that helps you imagine, '
+                'customize and create a space that feels uniquely yours.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 18,
+                  height: 1.6,
+                  color: Color(0xFF514E25),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 75),
+
+            if (isDesktop)
+              _buildDesktopHowItWorks(steps)
+            else
+              _buildMobileHowItWorks(steps),
+          ],
+        );
+      },
+    ),
+  );
+}
+
+// Responsive horizontal timeline for desktop
+
+Widget _buildDesktopHowItWorks(List<Map<String, Object>> steps) {
+  return SizedBox(
+    width: double.infinity,
+    child: Stack(
+      children: [
+        Positioned(
+          top: 39,
+          left: 45,
+          right: 45,
+          child: Container(
+            height: 1,
+            color: const Color(0xFFD8D3C5),
+          ),
+        ),
+
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: steps.map((step) {
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        width: 80,
+                        height: 80,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF514E25),
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Color(0x1F514E25),
+                              blurRadius: 20,
+                              offset: Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          step['icon'] as IconData,
+                          color: Colors.white,
+                          size: 30,
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 27),
+
+                    Text(
+                      step['number'] as String,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFAA8F78),
+                      ),
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    Text(
+                      step['title'] as String,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF514E25),
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    Text(
+                      step['description'] as String,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        height: 1.6,
+                        color: Color(0xFF514E25),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    ),
+  );
+}
+
+// Mobile layout
+
+Widget _buildMobileHowItWorks(List<Map<String, Object>> steps) {
+  return Column(
+    children: steps.map((step) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 28),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: const BoxDecoration(
+                color: Color(0xFF514E25),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                step['icon'] as IconData,
+                color: Colors.white,
+                size: 26,
+              ),
+            ),
+
+            const SizedBox(width: 18),
+
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    step['number'] as String,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFAA8F78),
+                    ),
+                  ),
+
+                  const SizedBox(height: 5),
+
+                  Text(
+                    step['title'] as String,
+                    style: const TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF514E25),
+                    ),
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  Text(
+                    step['description'] as String,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      height: 1.6,
+                      color: Color(0xFF514E25),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }).toList(),
+  );
+}
+
+// Horizontal padding based on screen width
+
+double desktopPadding(BuildContext context) {
+  final width = MediaQuery.of(context).size.width;
+
+  if (width >= 1200) {
+    return 10;
+  } else if (width >= 800) {
+    return 20;
+  }
+
+  return 4;
+}
+
+// ABOUT SECTION
+// =========================================================
+// ABOUT SECTION
+// ============================================================
+
+Widget _aboutSection() {
+  return Container(
+    key: _aboutKey,
+    width: double.infinity,
+    color: cream,
+    padding: const EdgeInsets.symmetric(
+      horizontal: 40,
+      vertical: 80,
+    ),
+    child: Column(
+      children: [
+        // ABOUT HEADING
+        const Text(
+          "ABOUT NESTCRAFT",
+          style: TextStyle(
+            color: olive,
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 2,
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        // MAIN TITLE
+        const Text(
+          "Imagine. Change. Live.",
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: olive,
+            fontSize: 34,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+
+        const SizedBox(height: 18),
+
+        // DESCRIPTION
+        ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: 800,
+          ),
+          child: const Text(
+            "NestCraft is an interior design platform that helps "
+            "you reimagine your living space. Upload your room, "
+            "explore creative design ideas, customize furniture "
+            "and decor, and discover alternatives that match "
+            "your style and budget.",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: olive,
+              fontSize: 15,
+              height: 1.7,
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 40),
+
+        // FEATURES
+        Wrap(
+          spacing: 25,
+          runSpacing: 20,
+          alignment: WrapAlignment.center,
+          children: [
+            _aboutItem(
+              Icons.design_services_outlined,
+              "Personalized Design",
+            ),
+            _aboutItem(
+              Icons.auto_awesome_outlined,
+              "Smart Suggestions",
+            ),
+            _aboutItem(
+              Icons.account_balance_wallet_outlined,
+              "Budget Friendly",
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 45),
+
+        // BOTTOM INFORMATION CARD
+        Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(
+            maxWidth: 850,
+          ),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 30,
+            vertical: 30,
+          ),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8F5EF),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: olive.withOpacity(0.12),
+            ),
+          ),
+          child: Column(
+            children: [
+              const Icon(
+                Icons.home_work_outlined,
+                color: olive,
+                size: 34,
+              ),
+
+              const SizedBox(height: 15),
+
+              const Text(
+                "Your Space. Your Style. Your Story.",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: olive,
+                  fontSize: 21,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              Text(
+                "NestCraft brings creativity, personalization "
+                "and practical choices together to make interior "
+                "design simple and enjoyable.",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: olive.withOpacity(0.85),
+                  fontSize: 13,
+                  height: 1.6,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+// ============================================================
+// ABOUT ITEM
+// ============================================================
+
+Widget _aboutItem(
+  IconData icon,
+  String title,
+) {
+  return Container(
+    padding: const EdgeInsets.symmetric(
+      horizontal: 22,
+      vertical: 15,
+    ),
+    decoration: BoxDecoration(
+      border: Border.all(
+        color: olive.withOpacity(0.2),
+      ),
+      borderRadius: BorderRadius.circular(30),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          icon,
+          color: olive,
+          size: 20,
+        ),
+
+        const SizedBox(width: 10),
+
+        Text(
+          title,
+          style: const TextStyle(
+            color: olive,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+// NAVIGATION
+
+void _navigateToLanding() {
+  Navigator.pushReplacement(
+    context,
+    MaterialPageRoute(
+      builder: (_) => const LandingPage(),
+    ),
+  );
+}
+
+void _handleNavigation(String title) {
+  if (title == 'Home') {
+    _navigateToLanding();
+  } else if (title == 'How It Works') {
+    _scrollToSection(_howItWorksKey);
+  } else if (title == 'About') {
+    _scrollToSection(_aboutKey);
+  }
+}
+
+void _scrollToSection(GlobalKey key) {
+  final targetContext = key.currentContext;
+
+  if (targetContext != null) {
+    Scrollable.ensureVisible(
+      targetContext,
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeInOut,
+      alignment: 0.1,
+    );
+  }
+}
+
+// LOGO
+
+Widget _logo() {
+  return InkWell(
+    onTap: _navigateToLanding,
+    child: Image.asset(
+      'assets/images/nestcraft.png',
+      width: 160,
+      height: 60,
+      fit: BoxFit.contain,
+    ),
+  );
+}
+
+// DESKTOP NAVBAR
+
+Widget _navbar() {
+  return Container(
+    height: 78,
+    padding: const EdgeInsets.symmetric(horizontal: 30),
     decoration: const BoxDecoration(
       color: Color(0xFFF1E7D9),
       border: Border(
-        bottom: BorderSide(color: Color(0xFFE6D8C6)),
+        bottom: BorderSide(
+          color: Color(0xFFE6D8C6),
+        ),
       ),
     ),
     child: Row(
       children: [
-        InkWell(
-          onTap: () {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const LandingPage(),
-              ),
-            );
-          },
-          child: Image.asset(
-            'assets/images/nestcraft.png',
-            width: desktop ? 180 : 125,
-            height: desktop ? 58 : 44,
-            fit: BoxFit.contain,
+        _logo(),
+        const Spacer(),
+        _navText('Home'),
+        _navText('How It Works'),
+        _navText('About'),
+        const SizedBox(width: 15),
+        _profileMenu(),
+      ],
+    ),
+  );
+}
+
+Widget _navText(String title) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 12),
+    child: InkWell(
+      onTap: () => _handleNavigation(title),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          vertical: 10,
+          horizontal: 4,
+        ),
+        child: Text(
+          title,
+          style: const TextStyle(
+            color: Color(0xFF655443),
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
           ),
         ),
-        if (desktop) ...[
-          const Spacer(),
-          _navItem('Home', () {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const LandingPage(),
-              ),
-            );
-          }),
-          _navItem('How It Works', () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const LoginPage(),
-              ),
-            );
-          }),
-          _navItem('About', () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const LoginPage(),
-              ),
-            );
-          }),
-          const SizedBox(width: 12),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const LoginPage(),
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: darkBrown,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 22,
-                vertical: 14,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+      ),
+    ),
+  );
+}
+
+// MOBILE NAVBAR
+
+Widget _mobileNavbar() {
+  return Container(
+    padding: const EdgeInsets.symmetric(
+      horizontal: 16,
+      vertical: 8,
+    ),
+    decoration: const BoxDecoration(
+      color: Color(0xFFF1E7D9),
+      border: Border(
+        bottom: BorderSide(
+          color: Color(0xFFE6D8C6),
+        ),
+      ),
+    ),
+    child: Column(
+      children: [
+        Row(
+          children: [
+            _logo(),
+            const Spacer(),
+            IconButton(
+              onPressed: () {
+                setState(() {
+                  _showMobileNav = !_showMobileNav;
+                });
+              },
+              icon: Icon(
+                _showMobileNav
+                    ? Icons.close_rounded
+                    : Icons.menu_rounded,
+                color: darkBrown,
+                size: 28,
               ),
             ),
-            child: const Text('Get Started'),
+          ],
+        ),
+
+        if (_showMobileNav) ...[
+          const Divider(
+            color: Color(0xFFE6D8C6),
           ),
-        ] else ...[
-          const Spacer(),
-          PopupMenuButton<String>(
-            icon: const Icon(
-              Icons.menu_rounded,
-              color: darkBrown,
-              size: 28,
-            ),
-            onSelected: (value) {
-              if (value == 'Home') {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const LandingPage(),
-                  ),
-                );
-              } else if (value == 'How It Works' ||
-                  value == 'About' ||
-                  value == 'Get Started') {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const LoginPage(),
-                  ),
-                );
-              }
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: 'Home',
-                child: Text('Home'),
-              ),
-              PopupMenuItem(
-                value: 'How It Works',
-                child: Text('How It Works'),
-              ),
-              PopupMenuItem(
-                value: 'About',
-                child: Text('About'),
-              ),
-              PopupMenuItem(
-                value: 'Get Started',
-                child: Text('Get Started'),
-              ),
-            ],
+          _mobileNavItem('Home'),
+          _mobileNavItem('How It Works'),
+          _mobileNavItem('About'),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: _profileMenu(),
           ),
         ],
       ],
@@ -1180,26 +1698,138 @@ Widget _buildHeader(bool desktop) {
   );
 }
 
-Widget _navItem(String title, VoidCallback onTap) {
-  return Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 12),
-    child: InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Text(
-          title,
-          style: const TextStyle(
-            color: Color(0xFF655443),
-            fontWeight: FontWeight.w500,
-            fontSize: 13,
+Widget _mobileNavItem(String title) {
+  return ListTile(
+    dense: true,
+    title: Text(
+      title,
+      style: const TextStyle(
+        color: darkBrown,
+        fontWeight: FontWeight.w500,
+      ),
+    ),
+    onTap: () {
+      setState(() {
+        _showMobileNav = false;
+      });
+
+      _handleNavigation(title);
+    },
+  );
+}
+
+// GET USER NAME
+Future<String> _getUserName() async {
+  final user = FirebaseAuth.instance.currentUser;
+
+  if (user == null) return 'Guest';
+
+  try {
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
+
+    if (doc.exists) {
+      return (doc.data()?['name'] ?? user.email ?? 'User')
+          .toString();
+    }
+  } catch (e) {
+    debugPrint('Profile name error: $e');
+  }
+
+  return user.email ?? 'User';
+}
+
+// PROFILE MENU
+Widget _profileMenu() {
+  return PopupMenuButton<String>(
+    tooltip: 'Profile',
+    onSelected: (value) async {
+      if (value == 'profile') {
+        final user = FirebaseAuth.instance.currentUser;
+        showMessage(user?.email ?? 'No user logged in');
+      } else if (value == 'logout') {
+        await FirebaseAuth.instance.signOut();
+
+        if (!mounted) return;
+
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const LoginPage(),
           ),
+          (route) => false,
+        );
+      }
+    },
+    itemBuilder: (context) => const [
+      PopupMenuItem(
+        value: 'profile',
+        child: Row(
+          children: [
+            Icon(Icons.person_outline, color: darkBrown),
+            SizedBox(width: 10),
+            Text('Profile'),
+          ],
         ),
+      ),
+      PopupMenuItem(
+        value: 'logout',
+        child: Row(
+          children: [
+            Icon(Icons.logout, color: Colors.red),
+            SizedBox(width: 10),
+            Text('Logout'),
+          ],
+        ),
+      ),
+    ],
+    child: Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 9,
+      ),
+      decoration: BoxDecoration(
+        color: cream,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircleAvatar(
+            radius: 15,
+            backgroundColor: brown,
+            child: Icon(
+              Icons.person,
+              color: Colors.white,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 8),
+          FutureBuilder<String>(
+            future: _getUserName(),
+            builder: (context, snapshot) {
+              return Text(
+                snapshot.data ?? 'User',
+                style: const TextStyle(
+                  color: darkBrown,
+                  fontWeight: FontWeight.w600,
+                ),
+              );
+            },
+          ),
+          const SizedBox(width: 5),
+          const Icon(
+            Icons.keyboard_arrow_down,
+            color: darkBrown,
+          ),
+        ],
       ),
     ),
   );
 }
+
 
   Widget _buildPageTitle(bool desktop) {
   return Align(
