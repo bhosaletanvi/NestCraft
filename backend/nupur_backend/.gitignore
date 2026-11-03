@@ -1,0 +1,7 @@
+supabase_config.txt
+firebase-service-account.json
+.env
+venv/
+.venv/
+__pycache__/
+*.pyc
