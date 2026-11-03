@@ -20,7 +20,7 @@ class UplodeImg extends StatefulWidget {
 }
 
 class _UplodeImgState extends State<UplodeImg> {
-  
+  static const String baseUrl = 'http://127.0.0.1:8000';
 Future<void> _deleteExistingObject(
   String documentId,
 ) async {
@@ -2750,9 +2750,23 @@ Widget _analyzeimgButton() {
                   final title = _productField(product, ['title', 'name', 'product_name']);
                   final price = _productField(product, ['price', 'extracted_price', 'displayed_price']);
                   final store = _productField(product, ['source', 'store', 'merchant']);
-                  final image = _productField(product, ['thumbnail', 'image', 'image_url', 'thumbnail_url']);
-                  final link = _productField(product, ['product_link', 'link', 'url']);
+                  final image = _productField(product, [
+  'imageUrl',
+  'thumbnail',
+  'image',
+  'image_url',
+  'thumbnail_url',
+]);
 
+final link = _productField(product, [
+  'productUrl',
+  'product_link',
+  'link',
+  'url',
+]);
+debugPrint('Product: $title');
+debugPrint('Image URL: $image');
+debugPrint('Product URL: $link');
                   return Container(
                     width: 185,
                     padding: const EdgeInsets.all(10),
@@ -2769,7 +2783,7 @@ Widget _analyzeimgButton() {
                             borderRadius: BorderRadius.circular(8),
                             child: image.isNotEmpty
                                 ? Image.network(
-                                    image,
+                                    '$baseUrl/proxy-image?url=${Uri.encodeComponent(image)}',
                                     width: double.infinity,
                                     fit: BoxFit.contain,
                                     errorBuilder: (_, __, ___) => const Center(
