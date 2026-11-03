@@ -36,6 +36,18 @@ class _RedesignPageState extends State<RedesignPage> {
   final GlobalKey _aboutKey = GlobalKey();
   bool _showMobileNav = false;
   bool hasDownloadedImage = false;
+  Future<String> getProjectName() async {
+  final doc = await FirebaseFirestore.instance
+      .collection('projects')
+      .doc(widget.projectId)
+      .get();
+
+  if (!doc.exists) {
+    throw Exception('Project not found');
+  }
+
+  return doc.data()?['projectName'] ?? 'My Room Design';
+}
   void _scrollToHome() {
     if (!_scrollController.hasClients) return;
 
@@ -1480,15 +1492,28 @@ Widget _buildGenerateButton() {
     child: 
 OutlinedButton.icon(
   onPressed: hasDownloadedImage
-      ? () {
+    ? () async {
+        try {
+          final projectName = await getProjectName();
+
+          if (!mounted) return;
+
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => const ModifyRoomPage(),
+              builder: (context) => ModifyRoomPage(
+                projectId: widget.projectId,
+                projectName: projectName,
+              ),
             ),
           );
+        } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Unable to open project: $e')),
+          );
         }
-      : null,
+      }
+    : null,
   icon: Icon(
     hasDownloadedImage
         ? Icons.shopping_bag_outlined

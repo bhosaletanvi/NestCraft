@@ -38,7 +38,14 @@ const Color olive = Color(0xFF514E25);
 
 
 class ModifyRoomPage extends StatefulWidget {
-  const ModifyRoomPage({super.key});
+  final String projectId;
+  final String projectName;
+
+  const ModifyRoomPage({
+    super.key,
+    required this.projectId,
+    required this.projectName,
+  });
 
   @override
   State<ModifyRoomPage> createState() =>
@@ -527,6 +534,7 @@ String? _getFurnitureCategory(String name) {
   }
 }
 
+
 Future<void> saveDesign() async {
   if (isSavingDesign) return;
 
@@ -535,121 +543,77 @@ Future<void> saveDesign() async {
     return;
   }
 
+  final user = FirebaseAuth.instance.currentUser;
+
+  if (user == null) {
+    showMessage('Please log in first.');
+    return;
+  }
+
   try {
     setState(() {
       isSavingDesign = true;
     });
 
-    // Edited image available असल्यास ती save करायची.
-    // अन्यथा original room image save करायची.
+    // Get final edited image bytes
     final Uint8List imageBytes =
         editedRoomImageBytes ??
         await selectedRoomImage!.readAsBytes();
 
     if (imageBytes.isEmpty) {
-      showMessage('The selected image is empty.');
-      return;
+      throw Exception('Image is empty.');
     }
 
-    // Firebase login तपासणे.
-    final user = FirebaseAuth.instance.currentUser;
-    debugPrint('Firebase UID: ${user?.uid}');
-debugPrint('Firebase Email: ${user?.email}');
+    final supabase = Supabase.instance.client;
 
-    if (user == null) {
-      showMessage('Please log in before saving your design.');
-      return;
-    }
+    // Generate unique image path
+    final fileName =
+        'design_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
-    // Firebase ID token मिळवणे.
-    final idToken = await user.getIdToken();
+    final storagePath =
+        '${user.uid}/${widget.projectId}/$fileName';
 
-    if (idToken == null || idToken.isEmpty) {
-      showMessage('Unable to verify your login. Please try again.');
-      return;
-    }
+    // 1. Upload image to Supabase
+    await supabase.storage
+        .from('ai-generated')
+        .uploadBinary(
+          storagePath,
+          imageBytes,
+          fileOptions: const FileOptions(
+            contentType: 'image/jpeg',
+            upsert: false,
+          ),
+        );
 
-    // Image extension आणि content type ठरवणे.
-    final originalName = selectedRoomImage!.name.toLowerCase();
+    // 2. Get image URL
+    final imageUrl = supabase.storage
+        .from('ai-generated')
+        .getPublicUrl(storagePath);
 
-    String extension;
-    String contentType;
+    debugPrint('Supabase image URL: $imageUrl');
 
-    if (originalName.endsWith('.png')) {
-      extension = 'png';
-      contentType = 'image/png';
-    } else if (originalName.endsWith('.webp')) {
-      extension = 'webp';
-      contentType = 'image/webp';
-    } else {
-      extension = 'jpg';
-      contentType = 'image/jpeg';
-    }
-
-    // Existing backend port 8000 आहे.
-    // Save Design API port 8001 वर चालते.
-    final saveApiUrl =
-        apiBaseUrl.replaceFirst(':8000', ':8001');
-
-    debugPrint('Saving design through authenticated API...');
-    debugPrint('API URL: $saveApiUrl/save-design');
-
-    final formData = FormData.fromMap({
-      'image': MultipartFile.fromBytes(
-        imageBytes,
-        filename: 'room.$extension',
-        contentType: DioMediaType.parse(contentType),
-      ),
+    // 3. Save image details in Firebase
+    await FirebaseFirestore.instance
+        .collection('AIgenerated')
+        .add({
+      'projectId': widget.projectId,
+      'projectName': widget.projectName,
+      'userId': user.uid,
+      'imgUrl': imageUrl,
     });
 
-    // Image आणि Firebase token नवीन API ला पाठवणे.
-    final response = await Dio().post(
-      '$saveApiUrl/save-design',
-      data: formData,
-      options: Options(
-        headers: {
-          'Authorization': 'Bearer $idToken',
-        },
-        receiveTimeout: const Duration(seconds: 60),
-        sendTimeout: const Duration(seconds: 60),
-      ),
-    );
+    // 4. Update UI
+    if (!mounted) return;
 
-    final responseData = response.data;
+    setState(() {
+      savedDesignPath = storagePath;
+    });
 
-    if (response.statusCode == 200 &&
-        responseData is Map &&
-        responseData['path'] != null) {
-      final storagePath = responseData['path'].toString();
+    showMessage('Design saved successfully!');
 
-      if (!mounted) return;
-
-      setState(() {
-        savedDesignPath = storagePath;
-      });
-
-      debugPrint('Design saved successfully: $storagePath');
-
-      showMessage('Design saved successfully to Supabase!');
-    } else {
-      throw Exception('Unexpected response from Save Design API.');
-    }
-  } on DioException catch (e) {
-    debugPrint('Save Design API error: ${e.message}');
-    debugPrint('API response: ${e.response?.data}');
-
-    if (mounted) {
-      final responseData = e.response?.data;
-      final message = responseData is Map
-          ? responseData['detail']?.toString()
-          : null;
-
-      showMessage(
-        message ?? 'Unable to save design. Please try again.',
-      );
-    }
-  } catch (e) {
-    debugPrint('Save design error: $e');
+  } catch (e, stackTrace) {
+    debugPrint('SAVE DESIGN ERROR: $e');
+    debugPrint('$stackTrace');
 
     if (mounted) {
       showMessage('Unable to save design: $e');
