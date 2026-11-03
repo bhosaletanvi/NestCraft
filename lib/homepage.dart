@@ -1641,21 +1641,68 @@ Widget _buildDesignCard(Map<String, String> design) {
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(15),
                 ),
-                child: Image.network(
-                  design['image'] ?? '',
-                  height: 145,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      height: 145,
-                      color: Colors.grey[300],
-                      child: const Center(
-                        child: Icon(Icons.image_not_supported),
-                      ),
-                    );
-                  },
-                ),
+                child: StreamBuilder<
+    QuerySnapshot<Map<String, dynamic>>>(
+  stream: FirebaseFirestore.instance
+      .collection('AIgenerated')
+      .where('projectId', isEqualTo: design['id'])
+      .where(
+        'userId',
+        isEqualTo: FirebaseAuth.instance.currentUser!.uid,
+      )
+      .orderBy('createdAt', descending: true)
+      .limit(1)
+      .snapshots(),
+
+  builder: (context, snapshot) {
+    if (snapshot.connectionState == ConnectionState.waiting) {
+      return Container(
+        height: 145,
+        color: const Color(0xFFF5F0E8),
+        child: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (snapshot.hasError ||
+        !snapshot.hasData ||
+        snapshot.data!.docs.isEmpty) {
+      return Container(
+        height: 145,
+        color: const Color(0xFFF5F0E8),
+        child: const Center(
+          child: Text('No AI design saved yet'),
+        ),
+      );
+    }
+
+    final aiImageUrl =
+        snapshot.data!.docs.first.data()['imgUrl'] ?? '';
+
+    if (aiImageUrl.isEmpty) {
+      return const SizedBox(
+        height: 145,
+        child: Center(child: Icon(Icons.image_not_supported)),
+      );
+    }
+
+    return Image.network(
+      aiImageUrl,
+      height: 145,
+      width: double.infinity,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) {
+        return const SizedBox(
+          height: 145,
+          child: Center(
+            child: Icon(Icons.broken_image),
+          ),
+        );
+      },
+    );
+  },
+),
               ),
               Padding(
                 padding: const EdgeInsets.all(12),
