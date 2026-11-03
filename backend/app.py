@@ -6,7 +6,7 @@ from pydantic import BaseModel, HttpUrl, Field, model_validator
 from pathlib import Path
 from io import BytesIO
 from PIL import Image
-
+from fastapi import FastAPI, HTTPException, Response
 from ultralytics import YOLO
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
@@ -541,3 +541,51 @@ def recommend(data: ProductRequest):
         "count": len(products),
         "products": products,
     }
+from urllib.parse import urlparse
+
+@app.get("/proxy-image")
+def proxy_image(url: str):
+    try:
+        parsed_url = urlparse(url)
+
+        # Allow only Google's Shopping thumbnail hosts
+        if not (
+            parsed_url.scheme == "https"
+            and parsed_url.hostname
+            and parsed_url.hostname.endswith(".gstatic.com")
+            and parsed_url.hostname.startswith("encrypted-tbn")
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid image URL"
+            )
+
+        image_response = requests.get(
+            url,
+            timeout=15,
+            headers={"User-Agent": "Mozilla/5.0"}
+        )
+
+        image_response.raise_for_status()
+
+        content_type = image_response.headers.get(
+            "Content-Type", ""
+        )
+
+        if not content_type.startswith("image/"):
+            raise HTTPException(
+                status_code=415,
+                detail="URL did not return an image"
+            )
+
+        return Response(
+            content=image_response.content,
+            media_type=content_type,
+            headers={"Cache-Control": "public, max-age=3600"}
+        )
+
+    except requests.RequestException as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Could not fetch image: {str(e)}"
+        )
