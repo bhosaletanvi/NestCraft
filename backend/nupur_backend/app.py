@@ -2,6 +2,7 @@
 import os
 import tempfile
 from pathlib import Path
+from unittest import result
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, HTTPException
@@ -101,7 +102,22 @@ async def detect_furniture(image: UploadFile = File(...)):
                 "x2": round(x2, 2),
                 "y2": round(y2, 2),
             })
+            if len(detections) == 0:
+             return {
+        "success": False,
+        "message": "No furniture detected in this image. Please upload a clear room image containing furniture.",
+        "image_width": int(result.orig_shape[1]),
+        "image_height": int(result.orig_shape[0]),
+        "detections": []
+    }
 
+            return {
+    "success": True,
+    "message": "Furniture detected successfully!",
+    "image_width": int(result.orig_shape[1]),
+    "image_height": int(result.orig_shape[0]),
+    "detections": detections
+}
         return {
             "image_width": int(result.orig_shape[1]),
             "image_height": int(result.orig_shape[0]),

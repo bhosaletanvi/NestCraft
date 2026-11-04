@@ -280,7 +280,7 @@ Future<void> _loadAlternatives() async {
     Map<String, dynamic>? data,
   ]) {
     debugPrint(
-      '[$hypothesisId] $location: $message ${data ?? {}}',
+      '[$hypothesisId] $location: ${data ?? {}}',
     );
   }
 
@@ -899,7 +899,22 @@ Future<void> detectRoomFurniture(XFile image) async {
         'y2': ((item['y2'] ?? 0) as num).toDouble(),
       });
     }
+    // Check if any supported furniture was detected.
+if (detections.isEmpty) {
+  if (mounted) {
+    setState(() {
+      detectedFurniture = [];
+      selectedObject = -1;
+      showObjectTools = false;
+    });
 
+    showMessage(
+      'No furniture detected! Please upload a clear room image containing furniture.',
+    );
+  }
+
+  return;
+}
     if (!mounted) return;
 
     setState(() {
@@ -944,18 +959,37 @@ debugPrint('ORIGINAL FURNITURE NAMES: $originalFurnitureNames');
     );
 
     showMessage('Detected ${detections.length} furniture objects.');
-  } catch (e) {
-    debugPrint('Detection error: $e');
+  }on DioException catch (e) {
+  // Keep technical details in the developer console only.
+  debugPrint('Detection network error: ${e.message}');
+  debugPrint('API response: ${e.response?.data}');
 
-    _dbg(
-      'A',
-      'ModifyRoomPage.dart:detectRoomFurniture',
-      'Detection failed',
-      {'error': e.toString()},
+  if (mounted) {
+    setState(() {
+      detectedFurniture = [];
+      selectedObject = -1;
+      showObjectTools = false;
+    });
+
+    showMessage(
+      'No furniture detected! Please try a clear room image.',
     );
+  }
+} catch (e) {
+  debugPrint('Detection error: $e');
 
-    showMessage('Detection failed: $e');
-  } finally {
+  if (mounted) {
+    setState(() {
+      detectedFurniture = [];
+      selectedObject = -1;
+      showObjectTools = false;
+    });
+
+    showMessage(
+      'No furniture detected! Please try a clear room image.',
+    );
+  }
+}finally {
     if (mounted) {
       setState(() => isDetecting = false);
     }
