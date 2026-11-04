@@ -11,10 +11,19 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:ui' as ui;
 import 'dart:async';
 import 'services/shopping_service.dart';
+import 'package:nest_craft/uploadimg.dart';
 
 class UplodeImg extends StatefulWidget {
-  const UplodeImg({super.key});
+  final String? initialImageUrl;
+  final String? initialProjectId;
+  final bool autoAnalyze;
 
+  const UplodeImg({
+    super.key,
+    this.initialImageUrl,
+    this.initialProjectId,
+    this.autoAnalyze = false,
+  });
   @override
   State<UplodeImg> createState() => _UplodeImgState();
 }
@@ -92,7 +101,60 @@ Future<void> _deleteExistingObject(
 }
 
 
+@override
+void initState() {
+  super.initState();
 
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (widget.initialImageUrl != null &&
+        widget.initialImageUrl!.isNotEmpty) {
+      _loadGeneratedImage();
+    }
+  });
+}
+Future<void> _loadGeneratedImage() async {
+  final imageUrl = widget.initialImageUrl;
+
+  if (imageUrl == null || imageUrl.isEmpty) return;
+
+  try {
+    setState(() {
+      projectId = widget.initialProjectId;
+      isAnalyzing = true;
+    });
+
+    final response = await http.get(Uri.parse(imageUrl));
+
+    if (response.statusCode != 200) {
+      throw Exception('Unable to download saved design image.');
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      uploadedImageBytes = response.bodyBytes;
+      uploadedImageUrl = imageUrl;
+    });
+
+    if (widget.autoAnalyze) {
+      await _runAnalyze();
+    }
+  } catch (e) {
+    debugPrint('Generated image loading error: $e');
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Unable to load generated image: $e')),
+      );
+    }
+  } finally {
+    if (mounted) {
+      setState(() {
+        isAnalyzing = false;
+      });
+    }
+  }
+}
 Future<void> _selectObject() async {
   if (projectId == null || _samPoints.isEmpty) return;
 

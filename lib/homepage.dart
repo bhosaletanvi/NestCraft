@@ -1603,28 +1603,50 @@ Future<void> _deleteProject(String projectId) async {
   
 Widget _buildDesignCard(Map<String, String> design) {
   return GestureDetector(
-    onTap: () {
-      final imageUrl = design['image'] ?? '';
+   onTap: () async {
+  try {
+    final user = FirebaseAuth.instance.currentUser;
 
-      if (imageUrl.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No image URL found for this project'),
-          ),
-        );
-        return;
-      }
+    if (user == null) return;
 
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ProjectImagePage(
-            imageUrl: imageUrl,
-            projectName: design['title'] ?? 'My Design',
-          ),
+    // Fetch the latest AI-generated image
+    final snapshot = await FirebaseFirestore.instance
+        .collection('AIgenerated')
+        .where('projectId', isEqualTo: design['id'])
+        .where('userId', isEqualTo: user.uid)
+        .limit(1)
+        .get();
+
+    if (snapshot.docs.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No AI-generated image found!'),
         ),
       );
-    },
+      return;
+    }
+
+    final imageUrl =
+        snapshot.docs.first.data()['imgUrl']?.toString() ?? '';
+
+    if (imageUrl.isEmpty) return;
+
+    if (!context.mounted) return;
+
+    // Open generated image
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ProjectImagePage(
+          imageUrl: imageUrl,
+          projectName: design['title'] ?? 'My Design',
+        ),
+      ),
+    );
+  } catch (e) {
+    debugPrint('Error opening AI image: $e');
+  }
+},
     child: Container(
       width: 250,
       margin: const EdgeInsets.only(right: 18),
@@ -1650,7 +1672,6 @@ Widget _buildDesignCard(Map<String, String> design) {
         'userId',
         isEqualTo: FirebaseAuth.instance.currentUser!.uid,
       )
-      .orderBy('createdAt', descending: true)
       .limit(1)
       .snapshots(),
 
@@ -2014,24 +2035,227 @@ class ProjectImagePage extends StatelessWidget {
     required this.projectName,
   });
 
+  static const Color darkBrown = Color(0xFF2F2922);
+  static const Color brown = Color(0xFF6B4528);
+  static const Color olive = Color(0xFF514E25);
+  static const Color cream = Color(0xFFF5F0E8);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: cream,
       appBar: AppBar(
-        title: Text(projectName),
+        backgroundColor: cream,
+        foregroundColor: darkBrown,
+        elevation: 0,
+        centerTitle: false,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'MY DESIGN',
+              style: TextStyle(
+                fontSize: 11,
+                letterSpacing: 2,
+                color: brown,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Text(
+              projectName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.w700,
+                color: darkBrown,
+              ),
+            ),
+          ],
+        ),
       ),
-      body: Center(
-        child: Image.network(
-          imageUrl,
-          fit: BoxFit.contain,
-          loadingBuilder: (context, child, progress) {
-            if (progress == null) return child;
 
-            return const CircularProgressIndicator();
-          },
-          errorBuilder: (context, error, stackTrace) {
-            return const Text("Unable to load image");
-          },
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Heading
+              const Text(
+                'Your Dream Space',
+                style: TextStyle(
+                  fontSize: 25,
+                  fontWeight: FontWeight.w700,
+                  color: darkBrown,
+                ),
+              ),
+
+              const SizedBox(height: 6),
+
+              const Text(
+                'Your AI-generated interior design',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.black54,
+                ),
+              ),
+
+              const SizedBox(height: 22),
+
+              // Image preview
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: darkBrown.withOpacity(0.10),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: InteractiveViewer(
+                    minScale: 0.8,
+                    maxScale: 4,
+                    child: Image.network(
+                      imageUrl,
+                      width: double.infinity,
+                      fit: BoxFit.contain,
+                      loadingBuilder: (context, child, progress) {
+                        if (progress == null) return child;
+
+                        return Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const CircularProgressIndicator(
+                                color: brown,
+                              ),
+                              const SizedBox(height: 14),
+                              Text(
+                                'Loading your design...',
+                                style: TextStyle(
+                                  color: darkBrown.withOpacity(0.7),
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: const [
+                                Icon(
+                                  Icons.broken_image_outlined,
+                                  size: 55,
+                                  color: brown,
+                                ),
+                                SizedBox(height: 12),
+                                Text(
+                                  'Unable to load your design',
+                                  style: TextStyle(
+                                    color: darkBrown,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                SizedBox(height: 6),
+                                Text(
+                                  'Please check your internet connection.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Colors.black54,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // Bottom information
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 16,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEAE2D5),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      height: 44,
+                      width: 44,
+                      decoration: BoxDecoration(
+                        color: brown.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(13),
+                      ),
+                      child: const Icon(
+                        Icons.auto_awesome_rounded,
+                        color: brown,
+                        size: 23,
+                      ),
+                    ),
+
+                    const SizedBox(width: 13),
+
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Made with NestCraft AI',
+                            style: TextStyle(
+                              color: darkBrown,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'Pinch to zoom and explore your design',
+                            style: TextStyle(
+                              color: Colors.black54,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const Icon(
+                      Icons.zoom_in_rounded,
+                      color: olive,
+                      size: 25,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -1,4 +1,5 @@
 import 'package:nest_craft/shopping_page.dart';
+import 'package:nest_craft/uploadimg.dart';
 
 import 'LandingPage.dart';
 import 'LoginPage.dart';
@@ -16,19 +17,20 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 
-const String laptopIp = '10.42.229.130';
+const String laptopIp = '192.168.144.1';
+
 
 
 String get apiBaseUrl {
   if (kIsWeb) {
-    return 'http://127.0.0.1:8000';
+    return 'http://127.0.0.1:8003';
   }
 
   if (defaultTargetPlatform == TargetPlatform.android) {
-    return 'http://$laptopIp:8000';
+    return 'http://$laptopIp:8003';
   }
 
-  return 'http://127.0.0.1:8000';
+  return 'http://127.0.0.1:8003';
 }
 
 const Color darkBrown = Color(0xFF2F2922);
@@ -36,7 +38,8 @@ const Color brown = Color(0xFF6B4528);
 const Color cream = Color(0xFFF5F0E8);
 const Color cardColor = Color(0xFFFCF8F1);
 const Color olive = Color(0xFF514E25);
-
+bool hasSavedDesign = false;
+Uint8List? savedDesignImageBytes;
 
 class ModifyRoomPage extends StatefulWidget {
   final String projectId;
@@ -348,6 +351,8 @@ Future<void> pickRoomImage() async {
     if (!mounted || image == null) return;
 
     setState(() {
+      hasSavedDesign = false;
+savedDesignImageBytes = null;
       selectedRoomImage = image;
       editedRoomImageBytes = null;
 isReplacingFurniture = false;
@@ -377,7 +382,6 @@ isReplacingFurniture = false;
     });
 
     // Upload the newly selected room image.
-    await uploadRoomImage(image);
     if (!mounted) return;
 
     // Detect furniture in the new image.
@@ -430,7 +434,163 @@ isReplacingFurniture = false;
       showMessage('Upload failed: $e');
     }
   }
+Future<void> analyzeSavedDesign() async {
+  if (isDetecting || !hasSavedDesign) return;
 
+  final user = FirebaseAuth.instance.currentUser;
+
+  if (user == null) {
+    showMessage('Please log in first.');
+    return;
+  }
+
+  try {
+    setState(() {
+      isDetecting = true;
+      detectedFurniture = [];
+    });
+
+    // 1. Fetch the saved design from Firestore.
+    final snapshot = await FirebaseFirestore.instance
+        .collection('AIgenerated')
+        .where('projectId', isEqualTo: widget.projectId)
+        .where('userId', isEqualTo: user.uid)
+        .get();
+
+    if (snapshot.docs.isEmpty) {
+      throw Exception('No saved design found.');
+    }
+
+    // 2. Get the latest saved image.
+    final docs = snapshot.docs.toList();
+
+    docs.sort((a, b) {
+      final aTime = a.data()['createdAt'] as Timestamp?;
+      final bTime = b.data()['createdAt'] as Timestamp?;
+
+      return (bTime?.millisecondsSinceEpoch ?? 0)
+          .compareTo(aTime?.millisecondsSinceEpoch ?? 0);
+    });
+
+    final imageUrl =
+        docs.first.data()['imgUrl']?.toString();
+
+    if (imageUrl == null || imageUrl.isEmpty) {
+      throw Exception('Saved image URL is missing.');
+    }
+
+    debugPrint('SAVED IMAGE URL: $imageUrl');
+
+    // 3. Download the saved image from Supabase.
+    final imageResponse = await _dio.get<List<int>>(
+      imageUrl,
+      options: Options(responseType: ResponseType.bytes),
+    );
+
+    final bytes = imageResponse.data;
+
+    if (bytes == null || bytes.isEmpty) {
+      throw Exception('Unable to download saved image.');
+    }
+
+    final savedBytes = Uint8List.fromList(bytes);
+
+    // 4. Send the saved image to your detection API.
+    final formData = FormData.fromMap({
+      'image': MultipartFile.fromBytes(
+        savedBytes,
+        filename: 'saved_design.jpg',
+      ),
+    });
+
+    final response = await _dio.post(
+      '$apiBaseUrl/detect',
+      data: formData,
+      options: Options(
+        contentType: 'multipart/form-data',
+      ),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Image analysis failed.');
+    }
+
+    // 5. Process detections.
+    final result = Map<String, dynamic>.from(response.data);
+    final rawList = result['detections'] as List;
+
+    final List<Map<String, dynamic>> detections = [];
+
+    for (final raw in rawList) {
+      final item = Map<String, dynamic>.from(raw);
+
+      final name = normalizeFurnitureName(
+        item['label']?.toString() ?? '',
+      );
+
+      if (name == null) continue;
+
+      detections.add({
+        'name': name,
+        'class_id': (item['class_id'] as num?)?.toInt() ?? -1,
+        'confidence': ((item['confidence'] ?? 0) as num).toDouble(),
+        'x1': ((item['x1'] ?? 0) as num).toDouble(),
+        'y1': ((item['y1'] ?? 0) as num).toDouble(),
+        'x2': ((item['x2'] ?? 0) as num).toDouble(),
+        'y2': ((item['y2'] ?? 0) as num).toDouble(),
+      });
+    }
+
+    if (!mounted) return;
+
+    // 6. Update UI with the saved image and detections.
+    setState(() {
+      savedDesignImageBytes = savedBytes;
+
+      detectedImageWidth =
+          ((result['image_width'] ?? 0) as num).toDouble();
+
+      detectedImageHeight =
+          ((result['image_height'] ?? 0) as num).toDouble();
+
+      detectedFurniture = detections;
+
+      furnitureNames.clear();
+      originalFurnitureNames.clear();
+      furniturePositions.clear();
+      originalFurniturePositions.clear();
+      appliedFurnitureImages.clear();
+      appliedFurnitureNames.clear();
+
+      for (int i = 0; i < detections.length; i++) {
+        originalFurnitureNames[i] =
+            detections[i]['name'] as String;
+      }
+
+      selectedObject = detections.isEmpty ? -1 : 0;
+      showObjectTools = false;
+      editedRoomImageBytes = null;
+    });
+
+    showMessage(
+      'Analysis complete! ${detections.length} furniture objects detected.',
+    );
+
+  } catch (e, stackTrace) {
+    debugPrint('SAVED DESIGN ANALYSIS ERROR: $e');
+    debugPrintStack(stackTrace: stackTrace);
+
+    if (mounted) {
+      showMessage('Analysis failed: $e');
+    }
+  } finally {
+    if (mounted) {
+      setState(() {
+        isDetecting = false;
+      });
+    }
+  }
+}
 final Map<String, Map<String, String>> roomObjectLabels = {
   'Bedroom': {
     'bed': 'Bed',
@@ -537,7 +697,59 @@ String? _getFurnitureCategory(String name) {
       return null;
   }
 }
+Future<void> openGeneratedImageInUploadPage() async {
+  final user = FirebaseAuth.instance.currentUser;
 
+  if (user == null) {
+    showMessage('Please log in first.');
+    return;
+  }
+
+  try {
+    final snapshot = await FirebaseFirestore.instance
+        .collection('AIgenerated')
+        .where('projectId', isEqualTo: widget.projectId)
+        .where('userId', isEqualTo: user.uid)
+        .get();
+
+    if (snapshot.docs.isEmpty) {
+      showMessage('Please save your design first.');
+      return;
+    }
+
+    // Find the most recently saved design.
+    final docs = snapshot.docs.toList()
+      ..sort((a, b) {
+        final aTime = a.data()['createdAt'] as Timestamp?;
+        final bTime = b.data()['createdAt'] as Timestamp?;
+
+        return (bTime?.compareTo(aTime ?? Timestamp(0, 0)) ?? 0);
+      });
+
+    final savedImageUrl =
+        docs.first.data()['imgUrl']?.toString();
+
+    if (savedImageUrl == null || savedImageUrl.isEmpty) {
+      showMessage('Saved image URL not found.');
+      return;
+    }
+
+    if (!mounted) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UplodeImg(
+          initialImageUrl: savedImageUrl,
+          initialProjectId: widget.projectId,
+          autoAnalyze: true,
+        ),
+      ),
+    );
+  } catch (e) {
+    showMessage('Unable to open saved design: $e');
+  }
+}
 
 Future<void> saveDesign() async {
   if (isSavingDesign) return;
@@ -561,8 +773,9 @@ Future<void> saveDesign() async {
 
     // Get final edited image bytes
     final Uint8List imageBytes =
-        editedRoomImageBytes ??
-        await selectedRoomImage!.readAsBytes();
+    editedRoomImageBytes ??
+    savedDesignImageBytes ??
+    await selectedRoomImage!.readAsBytes();
 
     if (imageBytes.isEmpty) {
       throw Exception('Image is empty.');
@@ -604,14 +817,17 @@ Future<void> saveDesign() async {
       'projectName': widget.projectName,
       'userId': user.uid,
       'imgUrl': imageUrl,
+      'createdAt': FieldValue.serverTimestamp(),
     });
 
     // 4. Update UI
     if (!mounted) return;
 
     setState(() {
-      savedDesignPath = storagePath;
-    });
+  savedDesignPath = storagePath;
+  hasSavedDesign = true;
+  savedDesignImageBytes = imageBytes;
+});
 
     showMessage('Design saved successfully!');
 
@@ -784,7 +1000,8 @@ Future<void> replaceFurniture(
     });
 
     // 1. Read the original room image.
-    final roomBytes = await selectedRoomImage!.readAsBytes();
+    final roomBytes = savedDesignImageBytes ??
+    await selectedRoomImage!.readAsBytes();
 
     // 2. Download the selected furniture image.
     final furnitureResponse = await _dio.get<List<int>>(
@@ -1970,7 +2187,9 @@ Widget _buildRoomPreview() {
                       children: [
                         // Room image
                         Image.memory(
-  editedRoomImageBytes ?? snapshot.data!,
+  editedRoomImageBytes ?? 
+  savedDesignImageBytes ??
+  snapshot.data!,
   width: previewWidth,
   height: previewHeight,
   fit: BoxFit.fill,
@@ -2850,17 +3069,31 @@ Widget _buildQuickActions() {
         SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(
-            onPressed: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_)=>ShoppingPage()));
-            },
-            icon: const Icon(Icons.travel_explore),
-            label: const Text(
-              'Search on Web',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+           onPressed: (!hasSavedDesign || isSavingDesign)
+    ? null
+    : openGeneratedImageInUploadPage,
+icon: isDetecting
+    ? const SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: brown,
+        ),
+      )
+    : const Icon(Icons.travel_explore),
+
+label: Text(
+  isDetecting
+      ? 'Analyzing...'
+      : hasSavedDesign
+          ? 'Search on Web'
+          : 'Save Design First',
+  style: const TextStyle(
+    fontSize: 15,
+    fontWeight: FontWeight.w700,
+  ),
+),
             style: OutlinedButton.styleFrom(
               foregroundColor: brown,
               backgroundColor: cream,
