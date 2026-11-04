@@ -2431,24 +2431,31 @@ const SizedBox(height: 12),
 SizedBox(
   height: 48,
   child: ElevatedButton.icon(
-    onPressed: () {
+   onPressed: () {
+  debugPrint("MODIFY DESIGN CLICKED");
+  debugPrint("Image available: ${uploadedImageBytes != null}");
+  debugPrint("Image size: ${uploadedImageBytes?.length}");
+  debugPrint("Project ID: $projectId");
+
   if (uploadedImageBytes == null ||
       uploadedImageBytes!.isEmpty ||
       projectId == null) {
+    debugPrint("Navigation blocked: Missing data");
+
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text(
-          'Please upload and save your room image first.',
-        ),
+        content: Text("Image or Project ID is missing"),
       ),
     );
     return;
   }
 
+  debugPrint("Opening RedesignPage");
+
   Navigator.push(
     context,
     MaterialPageRoute(
-      builder: (context) => RedesignPage(
+      builder: (_) => RedesignPage(
         originalImageBytes: uploadedImageBytes!,
         projectId: projectId!,
       ),
